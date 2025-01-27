@@ -64,8 +64,9 @@ def index():
 	files = os.listdir(Config.WORK_FOLDER)
 	return render_template('index.html', files=files)
 
-@app.route('/update-data', methods=['POST'])
+@app.route('/update-data', methods=['GET'])
 def update_data():
+    print("entered")
     try:
         app.logger.info('Updating global data')
         success = load_data()
