@@ -1,0 +1,8 @@
+Data/
+myenv/
+logs/
+
+__pycache__/
+results/
+instantclient_23_6/
+*.log

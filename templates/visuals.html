@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>WDA Monitor - Visualizations</title>
+	<!-- Include all the same CSS and JS dependencies as index.html -->
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+	<link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+	<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+	<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+	<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+	<script src="https://cdn.powerbi.com/libs/powerbi-client/2.19.0/powerbi.min.js"></script>
+	<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+	<!-- Include all the same styles from index.html -->
+	<style>
+		.alert {
+			position: fixed;
+			top: 20px;
+			right: 20px;
+			z-index: 1000;
+			min-width: 300px;
+			box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+		}
+
+		.alert-danger {
+			color: #721c24;
+			background-color: #f8d7da;
+			border-color: #f5c6cb;
+		}
+
+		/* Stat card styles */
+		.stat-card {
+			border-radius: 10px;
+			transition: all 0.3s ease;
+			border: none;
+			box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+			margin-bottom: 1.5rem;
+		}
+		.stat-card:hover {
+			transform: translateY(-5px);
+			box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+		}
+		.stat-icon {
+			font-size: 2.5rem;
+			opacity: 0.8;
+		}
+		.stat-card.total-parts { background: linear-gradient(45deg, #4158D0, #C850C0); color: white; }
+		.stat-card.expired-parts { background: linear-gradient(45deg, #FF416C, #FF4B2B); color: white; }
+		.stat-card.active-parts { background: linear-gradient(45deg, #11998e, #38ef7d); color: white; }
+		.stat-card.error-parts { background: linear-gradient(45deg, #755BEA, #FF72C0); color: white; }
+		.stat-card.missing-parts { background: linear-gradient(45deg, #FF416C, #FF4B2B); color: white; }
+		.stat-card.module-count { background: linear-gradient(45deg, #4354b3, #442bff); color: white; }
+		.stat-card.issue-module-count { background: linear-gradient(45deg, #5d256a, #ff2bb1); color: white; }
+
+		.alert-danger {
+			background-color: #f8d7da;
+			color: #721c24;
+			border: 1px solid #f5c6cb;
+			border-radius: 4px;
+			padding: 15px;
+			margin: 10px 0;
+		}
+
+		/* Update chart container styles */
+		.chart-container {
+			position: relative;
+			min-height: 400px;
+			background: white;
+			border-radius: 8px;
+			box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+			padding: 15px;
+			margin-bottom: 20px;
+			/*overflow: auto;*/
+		}
+
+		/* Update module chart styles */
+		.module-chart-wrapper {
+			width: 100%;
+			overflow-x: hidden;
+			overflow-y: hidden;
+			padding-bottom: 15px;
+			position: relative;  /* For loading indicator positioning */
+		}
+
+		#moduleChart {
+			width: 100% !important;
+			height: 500px !important;
+			min-width: 500px;  /* Match the chart width */
+		}
+
+		/* Update loading indicator for module chart */
+		.module-chart-wrapper .chart-loading {
+			position: absolute;
+			top: 0;
+			left: 0;
+			right: 0;
+			bottom: 0;
+			background-color: rgba(255, 255, 255, 0.9);
+			display: none;
+			justify-content: center;
+			align-items: center;
+			z-index: 100;
+		}
+
+
+
+		.chart-error {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			min-height: 200px;
+			padding: 20px;
+			text-align: center;
+			color: #721c24;
+			background-color: #f8d7da;
+			border: 1px solid #f5c6cb;
+			border-radius: 4px;
+			margin: 10px;
+		}
+		
+		.select2-container {
+			width: 100% !important;
+		}
+		
+		.filter-section {
+			background-color: #f8f9fa;
+			padding: 20px;
+			border-radius: 5px;
+			margin-bottom: 20px;
+		}
+		
+		.btn-filter {
+			margin-top: 32px;
+		}
+		
+		.chart-title {
+			margin-bottom: 15px;
+			color: #2c3e50;
+		}
+		
+		.navbar {
+			margin-bottom: 20px;
+		}
+		
+		.loading {
+			position: fixed;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			background-color: rgba(255, 255, 255, 0.8);
+			display: none;
+			justify-content: center;
+			align-items: center;
+			z-index: 9999;
+		}
+		
+		.loading-spinner {
+			width: 50px;
+			height: 50px;
+			border: 5px solid #f3f3f3;
+			border-top: 5px solid #3498db;
+			border-radius: 50%;
+			animation: spin 1s linear infinite;
+			margin: auto;
+		}
+
+		.chart-loading {
+			position: absolute;
+			top: 0;
+			left: 0;
+			width: 100%;
+			height: 100%;
+			background-color: rgba(255, 255, 255, 0.9);
+			display: none;
+			justify-content: center;
+			align-items: center;
+			z-index: 100;
+			border-radius: 8px;
+		}
+
+		.notification {
+			position: fixed;
+			top: 20px;
+			right: 20px;
+			z-index: 1000;
+			min-width: 300px;
+			padding: 15px;
+			border-radius: 4px;
+			box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+			display: none;
+			animation: slideIn 0.3s ease-out;
+		}
+
+		@keyframes slideIn {
+			from {
+				transform: translateX(100%);
+				opacity: 0;
+			}
+			to {
+				transform: translateX(0);
+				opacity: 1;
+			}
+		}
+
+		.notification.success {
+			background-color: #d4edda;
+			color: #155724;
+			border: 1px solid #c3e6cb;
+		}
+
+		.notification.error {
+			background-color: #f8d7da;
+			color: #721c24;
+			border: 1px solid #f5c6cb;
+		}
+
+		.chart-container {
+			position: relative;
+			min-height: 400px;
+			background: white;
+			border-radius: 8px;
+			box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+			padding: 15px;
+			margin-bottom: 20px;
+		}
+
+
+		/* Data Table Styles */
+		.data-table-container {
+			margin-top: 2rem;
+			overflow-x: auto;
+			-webkit-overflow-scrolling: touch;
+			max-height: 600px;  /* Set maximum height */
+			overflow-y: auto;   /* Enable vertical scrolling */
+		}
+
+		.data-table {
+			min-width: 1200px;  /* Ensure minimum width to prevent cramping */
+			width: 100%;
+			border-collapse: separate;
+			border-spacing: 0;
+			background: white;
+			box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+		}
+
+		.data-table th {
+			background-color: #f8f9fa;
+			cursor: pointer;
+			padding: 12px;
+			text-align: left;
+			border-bottom: 2px solid #dee2e6;
+		}
+
+		/* Make header sticky */
+		.data-table thead th {
+			position: sticky;
+			top: 0;
+			background-color: #f8f9fa;
+			z-index: 1;
+			box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);
+		}
+
+		.data-table th:hover {
+			background-color: #e9ecef;
+		}
+
+		.data-table td {
+			padding: 12px;
+			border-bottom: 1px solid #dee2e6;
+		}
+
+		.data-table tbody tr:hover {
+			background-color: #f8f9fa;
+		}
+
+		.sort-icon {
+			margin-left: 5px;
+		}
+
+		.data-table-wrapper {
+			margin: 20px;
+			padding: 0;
+			background: white;
+			border-radius: 8px;
+			box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+		}
+
+		/* Data table styles */
+		.data-table td {
+			text-align: right;  /* Right align numeric columns */
+			padding: 8px 12px;
+		}
+
+		.data-table td:first-child {
+			text-align: left;   /* Left align module names */
+		}
+
+		.data-table th {
+			text-align: right;  /* Right align header cells */
+			padding: 12px;
+			background-color: #f8f9fa;
+			font-weight: 600;
+		}
+
+		.data-table th:first-child {
+			text-align: left;   /* Left align module header */
+		}
+
+		.data-table tr:hover {
+			background-color: rgba(0,0,0,0.02);
+		}
+
+		/* Add zebra striping */
+		.data-table tbody tr:nth-child(even) {
+			background-color: rgba(0,0,0,0.01);
+		}
+
+		/* Add subtle borders */
+		.data-table td, .data-table th {
+			border-bottom: 1px solid #dee2e6;
+		}
+
+		/* Column width styles */
+		.data-table th,
+		.data-table td {
+			white-space: nowrap;  /* Prevent text wrapping */
+		}
+
+		/* Module column (wider for names) */
+		.data-table th:first-child,
+		.data-table td:first-child {
+			min-width: 200px;
+			max-width: 300px;
+			white-space: normal;  /* Allow wrapping for module names */
+			word-break: break-word;
+		}
+
+		/* Count columns (narrower for numbers) */
+		.data-table th[data-sort*="count"],
+		.data-table td:nth-child(2),
+		.data-table td:nth-child(3),
+		.data-table td:nth-child(5),
+		.data-table td:nth-child(7),
+		.data-table td:nth-child(9) {
+			min-width: 100px;
+		}
+
+		/* Percentage columns (narrow for percentages) */
+		.data-table th[data-sort*="percentage"],
+		.data-table td:nth-child(4),
+		.data-table td:nth-child(6),
+		.data-table td:nth-child(8),
+		.data-table td:nth-child(10) {
+			min-width: 80px;
+		}
+
+		/* Add color coding for percentages */
+		.data-table td:nth-child(4),
+		.data-table td:nth-child(6),
+		.data-table td:nth-child(8),
+		.data-table td:nth-child(10) {
+			position: relative;
+		}
+
+		.data-table td:nth-child(4)::after,
+		.data-table td:nth-child(6)::after,
+		.data-table td:nth-child(8)::after,
+		.data-table td:nth-child(10)::after {
+			content: '';
+			position: absolute;
+			left: 0;
+			top: 0;
+			bottom: 0;
+			width: var(--percentage-width);
+			background-color: rgba(0, 123, 255, 0.1);
+			z-index: 0;
+		}
+
+		/* Ensure text stays above the percentage background */
+		.data-table td {
+			position: relative;
+			z-index: 1;
+		}
+
+		/* Update legend styles for better compactness */
+		.table-legend {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 15px;
+			margin-bottom: 15px;
+			padding: 8px 12px;
+			background: #f8f9fa;
+			border-radius: 4px;
+			font-size: 0.85rem;
+		}
+
+		.legend-item {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			white-space: nowrap;
+		}
+
+		.legend-color {
+			width: 16px;
+			height: 16px;
+			border-radius: 3px;
+		}
+
+		.legend-color.good { background-color: rgba(40, 167, 69, 0.2); }
+		.legend-color.warning { background-color: rgba(255, 193, 7, 0.2); }
+		.legend-color.critical { background-color: rgba(220, 53, 69, 0.2); }
+
+		/* Add color coding classes for percentages */
+		.percentage-low { color: #28a745; }    /* Green for good values */
+		.percentage-medium { color: #ffc107; }  /* Yellow for warning */
+		.percentage-high { color: #dc3545; }    /* Red for critical */
+
+		/* Update the background colors for percentage bars */
+		.percentage-low::after { background-color: rgba(40, 167, 69, 0.1); }
+		.percentage-medium::after { background-color: rgba(255, 193, 7, 0.1); }
+		.percentage-high::after { background-color: rgba(220, 53, 69, 0.1); }
+
+		/* Update table header styles */
+		.data-table th {
+			text-align: right;
+			padding: 12px 8px;
+			font-size: 0.9rem;
+			line-height: 1.2;
+			vertical-align: bottom;
+			position: sticky;
+			top: 0;
+			background-color: #f8f9fa;
+			z-index: 1;
+		}
+
+		.data-table th:first-child {
+			text-align: left;
+		}
+
+		.sort-icon {
+			opacity: 0.5;
+			margin-left: 4px;
+			font-size: 0.8em;
+		}
+
+		/* Add hover effect for sort icons */
+		.data-table th:hover .sort-icon {
+			opacity: 1;
+		}
+
+		/* Add subtle border to table header */
+		.data-table thead {
+			border-bottom: 2px solid #dee2e6;
+		}
+
+		/* Improve percentage visualization */
+		.data-table td[style*="--percentage-width"]::after {
+			transition: width 0.3s ease-in-out;
+			opacity: 0.15;
+		}
+
+		/* Make table more responsive */
+		@media (max-width: 1400px) {
+			.data-table th {
+				font-size: 0.85rem;
+				padding: 8px 6px;
+			}
+			
+			.data-table td {
+				font-size: 0.9rem;
+				padding: 6px;
+			}
+		}
+
+		/* Add hover effect for rows */
+		.data-table tbody tr:hover {
+			background-color: rgba(0,0,0,0.02);
+			transition: background-color 0.2s ease;
+		}
+
+		/* Improve number formatting */
+		.data-table td:not(:first-child) {
+			font-family: 'Consolas', monospace;
+			font-size: 0.9rem;
+		}
+
+		/* Add box shadow to table container */
+		.data-table-container {
+			box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+			border-radius: 4px;
+			background: white;
+		}
+		
+		@keyframes spin {
+			0% {
+				transform: rotate(0deg);
+			}
+			100% {
+				transform: rotate(360deg);
+			}
+		}
+	</style>
+</head>
+<body>
+	<!-- Navigation Bar -->
+	<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+		<div class="container-fluid">
+			<a class="navbar-brand" href="/">WDA Monitor</a>
+			<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+				<span class="navbar-toggler-icon"></span>
+			</button>
+			<div class="collapse navbar-collapse" id="navbarNav">
+				<ul class="navbar-nav">
+					<li class="nav-item">
+						<a class="nav-link" href="/">Home</a>
+					</li>
+					<li class="nav-item">
+						<a class="nav-link active" href="/visuals">Visualizations</a>
+					</li>
+				</ul>
+			</div>
+		</div>
+	</nav>
+
+	<!-- Notification Container -->
+	<div id="notification" class="notification"></div>
+
+	<!-- Loading Spinner -->
+	<div id="loading" class="loading" style="display: none;">
+		<div class="loading-spinner"></div>
+	</div>
+
+	<!-- Main Content -->
+	<div class="container-fluid mt-5">
+		<!-- Filter Section -->
+		<div class="row filter-section">
+			<div class="col-md-2" id="FilterSection">
+				<button id="downloadFiltered" class="btn btn-outline-secondary w-100 mb-3">Download Filtered</button>
+				<button id="clearFilters" class="btn btn-outline-secondary w-100 mb-3">
+					<i class="fas fa-filter"></i> Clear All Filters
+				</button>
+				
+				<div class="filter-wrapper mb-3">
+					<label class="form-label">Module</label>
+					<select class="form-select select2" id="moduleFilter" multiple>
+					</select>
+					<span class="filter-count" id="moduleCount"></span>
+				</div>
+
+				<div class="filter-wrapper mb-3">
+					<label class="form-label">File Name</label>
+					<select class="form-select select2" id="file_nameFilter" multiple>
+					</select>
+					<span class="filter-count" id="fileNameCount"></span>
+				</div>
+
+				<div class="filter-wrapper mb-3">
+					<label class="form-label">Manufacturer</label>
+					<select class="form-select select2" id="manFilter" multiple>
+					</select>
+					<span class="filter-count" id="manCount"></span>
+				</div>
+
+				<div class="filter-wrapper mb-3">
+					<label class="form-label">Status</label>
+					<select class="form-select select2" id="statusFilter" multiple>
+					</select>
+					<span class="filter-count" id="statusCount"></span>
+				</div>
+				<!--<div class="filter-wrapper mb-3">
+					<label class="form-label">Status</label>
+					<select class="form-select select2" id="statusFilter" multiple>
+						<option value="found">Success</option>
+						<option value="Error">Error (Errors/Exceptions/Incomplete)</option>
+						<option value="Proxy">Proxy (403 Errors)</option>
+						<option value="not run">Not Run</option>
+					</select>
+					<span class="filter-count" id="statusCount"></span>
+				</div>-->
+
+				<div class="filter-wrapper mb-3">
+					<label class="form-label">Priority</label>
+					<select class="form-select select2" id="prtyFilter" multiple>
+					</select>
+					<span class="filter-count" id="prtyCount"></span>
+				</div>
+
+				<div class="filter-wrapper mb-3">
+					<label class="form-label">Expiration</label>
+					<select class="form-select select2" id="is_expiredFilter" multiple>
+						<option value="true">Expired</option>
+						<option value="false">Not Expired</option>
+					</select>
+					<span class="filter-count" id="expiredCount"></span>
+				</div>
+
+				<div class="filter-wrapper mb-3">
+					<label class="form-label">Table Name</label>
+					<select class="form-select select2" id="table_nameFilter" multiple>
+					</select>
+					<span class="filter-count" id="table_nameCount"></span>
+				</div>
+
+				<div class="filter-wrapper mb-3">
+					<label class="form-label">Issue Modules</label>
+					<select class="form-select select2" id="issue_modulesFilter" multiple>
+						<option value="true">Has Issues</option>
+						<option value="false">No Issues</option>
+					</select>
+					<span class="filter-count" id="issue_modulesCount"></span>
+				</div>
+
+				<div class="filter-wrapper mb-3">
+					<label class="form-label">Date Range</label>
+					<div class="input-group">
+						<input type="date" class="form-control" id="startDate">
+						<input type="date" class="form-control" id="endDate">
+						<button class="btn btn-outline-secondary" id="clearDateFilter">
+							<i class="fas fa-times"></i>
+						</button>
+					</div>
+				</div>
+			</div>
+
+			<!-- Right Column - Visualizations -->
+			<div class="col-md-10">
+
+		<!-- Stats Cards -->
+		<div class="row mb-4">
+			<div class="col-md-4 col-lg-2">
+				<div class="card stat-card total-parts">
+					<div class="card-body">
+						<div class="d-flex justify-content-between align-items-center">
+							<div>
+								<h6 class="card-subtitle mb-2">Total Parts</h6>
+								<h2 class="card-title mb-0" id="totalPartsCount">0</h2>
+							</div>
+							<i class="fas fa-boxes stat-icon"></i>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="col-md-4 col-lg-2">
+				<div class="card stat-card expired-parts">
+					<div class="card-body">
+						<div class="d-flex justify-content-between align-items-center">
+							<div>
+								<h6 class="card-subtitle mb-2">Expired Parts</h6>
+								<h2 class="card-title mb-0" id="expiredPartsCount">0</h2>
+							</div>
+							<i class="fas fa-exclamation-circle stat-icon"></i>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="col-md-4 col-lg-2">
+				<div class="card stat-card active-parts">
+					<div class="card-body">
+						<div class="d-flex justify-content-between align-items-center">
+							<div>
+								<h6 class="card-subtitle mb-2">Active Parts</h6>
+								<h2 class="card-title mb-0" id="activePartsCount">0</h2>
+							</div>
+							<i class="fas fa-check-circle stat-icon"></i>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="col-md-4 col-lg-2">
+				<div class="card stat-card error-parts">
+					<div class="card-body">
+						<div class="d-flex justify-content-between align-items-center">
+							<div>
+								<h6 class="card-subtitle mb-2">Error Parts</h6>
+								<h2 class="card-title mb-0" id="errorPartsCount">0</h2>
+							</div>
+							<i class="fas fa-times-circle stat-icon"></i>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="col-md-4 col-lg-2">
+				<div class="card stat-card missing-parts">
+					<div class="card-body">
+						<div class="d-flex justify-content-between align-items-center">
+							<div>
+								<h6 class="card-subtitle mb-2">Missing Parts</h6>
+								<h2 class="card-title mb-0" id="missingPartsCount">0</h2>
+							</div>
+							<i class="fas fa-question-circle stat-icon"></i>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="col-md-4 col-lg-2">
+				<div class="card stat-card module-count">
+					<div class="card-body">
+						<div class="d-flex justify-content-between align-items-center">
+							<div>
+								<h6 class="card-subtitle mb-2">Total Modules</h6>
+								<h2 class="card-title mb-0" id="modulesCount">0</h2>
+							</div>
+							<i class="fas fa-cube stat-icon"></i>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Charts Section -->
+		<div class="row">
+			<!-- Status Distribution Chart -->
+			<div class="col-md-4 chart-container">
+				<h4 class="chart-title">Status Distribution</h4>
+				<div class="position-relative h-100">
+					<div id="statusChart" class="chart-container"></div>
+					<div class="chart-loading" style="display: none;">
+						<div class="spinner-border text-primary" role="status">
+							<span class="visually-hidden">Loading...</span>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Is Expired Chart -->
+			<div class="col-md-4 chart-container">
+				<h4 class="chart-title">Expired vs Valid</h4>
+				<div class="position-relative h-100">
+					<div id="isExpiredChart" class="chart-container"></div>
+					<div class="chart-loading" style="display: none;">
+						<div class="spinner-border text-primary" role="status">
+							<span class="visually-hidden">Loading...</span>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Table Name Distribution Chart -->
+			<div class="col-md-4 chart-container">
+				<h4 class="chart-title">Table Name Distribution</h4>
+				<div class="position-relative h-100">
+					<div id="tableNameChart" class="chart-container"></div>
+					<div class="chart-loading" style="display: none;">
+						<div class="spinner-border text-primary" role="status">
+							<span class="visually-hidden">Loading...</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		
+		<!-- Module Distribution and Timeline Charts Row -->
+		<div class="row mt-4">
+			<!-- Module Distribution Chart -->
+			<div class="col-md-6 chart-container">
+				<h4 class="chart-title">Module Distribution</h4>
+				<div class="module-chart-wrapper">
+					<div class="position-relative h-100">
+						<div id="moduleChart"></div>
+						<div class="chart-loading" style="display: none;">
+							<div class="spinner-border text-primary" role="status">
+								<span class="visually-hidden">Loading...</span>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Timeline Chart -->
+			<div class="col-md-6 chart-container">
+				<h4 class="chart-title">Timeline</h4>
+				<div class="position-relative h-100">
+					<div id="timelineChart" class="chart-container"></div>
+					<div class="chart-loading" style="display: none;">
+						<div class="spinner-border text-primary" role="status">
+							<span class="visually-hidden">Loading...</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<!-- Data Table Section -->
+		<div class="row mt-4">
+			<div class="col-12">
+				<div class="data-table-wrapper">
+					<h4 class="chart-title">Module Statistics</h4>
+					<div class="table-legend">
+						<div class="legend-item">
+							<div class="legend-color good"></div>
+							<span>Good (≥75% for success metrics, <25% for error metrics)</span>
+						</div>
+						<div class="legend-item">
+							<div class="legend-color warning"></div>
+							<span>Warning (50-75% for success, 25-50% for error)</span>
+						</div>
+						<div class="legend-item">
+							<div class="legend-color critical"></div>
+							<span>Critical (<50% for success, >50% for error)</span>
+						</div>
+					</div>
+					<div class="data-table-container">
+						<table class="data-table" id="dataTable">
+							<thead>
+								<tr>
+									<th data-sort="module">Module <span class="sort-icon">↕</span></th>
+									<th data-sort="total_count">Total Count <span class="sort-icon">↕</span></th>
+									<th data-sort="error_count">Error Count <span class="sort-icon">↕</span></th>
+									<th data-sort="error_percentage">Error % (Lower Better) <span class="sort-icon">↕</span></th>
+									<th data-sort="found_count">Found Count <span class="sort-icon">↕</span></th>
+									<th data-sort="found_percentage">Found % (Higher Better) <span class="sort-icon">↕</span></th>
+									<th data-sort="expired_count">Expired Count <span class="sort-icon">↕</span></th>
+									<th data-sort="expired_percentage">Expired % (Lower Better) <span class="sort-icon">↕</span></th>
+									<th data-sort="recent_count">Recent Count <span class="sort-icon">↕</span></th>
+									<th data-sort="recent_percentage">Recent % (Higher Better) <span class="sort-icon">↕</span></th>
+								</tr>
+							</thead>
+							<tbody id="dataTableBody">
+							</tbody>
+						</table>
+					</div>
+				</div>
+			</div>
+		</div>
+		</div>
+		</div>
+	</div>
+	<script>
+		let currentFilters = {
+			module: [],
+			file_name: [],
+			man: [],
+			status: [],
+			prty: [],
+			is_expired: [],
+			table_name: [],
+			issue_modules: [],
+			startDate: '',
+			endDate: ''
+		};
+		// Data Table functionality
+		let tableData = [];
+		let currentSortColumn = '';
+		let sortDirection = 'asc';
+
+		async function loadFilterOptions() {
+			try {
+				const response = await fetch('/api/filter-options');
+				const data = await response.json();
+				
+				// Initialize all select2 dropdowns with placeholders
+				$('.select2').select2({
+					width: '100%',
+					placeholder: 'Select options'
+				});
+
+				// Populate module filter
+				$('#moduleFilter').empty().select2({
+					data: data.teams.map(team => ({ id: team, text: team })),
+					placeholder: 'Select modules'
+				});
+
+				// Populate file name filter
+				$('#file_nameFilter').empty().select2({
+					data: data.Files.map(project => ({ id: project, text: project })),
+					placeholder: 'Select files'
+				});
+
+				// Populate manufacturer filter
+				$('#manFilter').empty().select2({
+					data: data.manufacturers.map(man => ({ id: man, text: man })),
+					placeholder: 'Select manufacturers'
+				});
+
+				console.log(data.status)
+				// Populate Status filter
+				$('#statusFilter').empty().select2({
+					data: data.status.map(status => ({ id: status, text: status })),
+					placeholder: 'Select Status'
+				});
+				
+
+				// Populate priority filter
+				$('#prtyFilter').empty().select2({
+					data: data.priorities.map(prty => ({ id: prty, text: prty })),
+					placeholder: 'Select priorities'
+				});
+
+				// Populate table name filter
+				$('#table_nameFilter').empty().select2({
+					data: data.table_name.map(project => ({ id: project, text: project })),
+					placeholder: 'Select table name'
+				});
+
+			} catch (error) {
+				console.error('Error loading filter options:', error);
+			}
+		}
+
+
+		// Add error boundary for chart updates
+		function handleChartError(chartId, error) {
+			console.error(`Error updating ${chartId}:`, error);
+			$(`#${chartId}`).html(`
+				<div class="chart-error">
+					<div>
+						<i class="fas fa-exclamation-circle fa-2x mb-2"></i>
+						<p>Failed to load chart: ${error.message}</p>
+						<button class="btn btn-sm btn-outline-danger mt-2" onclick="retryChart('${chartId}')">
+							<i class="fas fa-sync-alt"></i> Retry
+						</button>
+					</div>
+				</div>
+			`);
+		}
+
+		// Add retry function
+		async function retryChart(chartId) {
+			$(`#${chartId}`).empty();
+			$(`#${chartId}`).closest('.chart-container').find('.chart-loading').css('display', 'flex');
+			try {
+				await updateCharts();
+			} catch (error) {
+				handleChartError(chartId, error);
+			}
+		}
+
+		async function updateSingleChart(chartId, updateFn) {
+			try {
+				await updateFn();
+			} catch (error) {
+				handleChartError(chartId, error);
+			}
+		}
+
+		async function updateCharts() {
+			// Show loading indicators
+			$('.chart-loading, #loading').css('display', 'flex');
+
+			try {
+				const response = await fetch('/api/chart-data', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(currentFilters)
+				});
+
+				if (!response.ok) {
+					throw new Error(`Failed to fetch chart data: ${response.statusText}`);
+				}
+
+				const data = await response.json();
+				if (!data || !data.stats || !data.status || !data.isExpired || !data.team || !data.table_name) {
+					throw new Error('Invalid data structure received from server');
+				}
+
+				// Update stats
+				$('#totalPartsCount').text(data.stats.totalParts || 0);
+				$('#expiredPartsCount').text(data.stats.expiredParts || 0);
+				$('#activePartsCount').text(data.stats.activeParts || 0);
+				$('#errorPartsCount').text(data.stats.errorParts || 0);
+				$('#missingPartsCount').text(data.stats.missingParts || 0);
+				$('#modulesCount').text(data.stats.moduleCount || 0);
+
+				const commonConfig = {
+					responsive: true,
+					displayModeBar: true,
+					displaylogo: false,
+					modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+					toImageButtonOptions: {
+						format: 'png',
+						filename: 'chart',
+						height: 500,
+						width: 700,
+						scale: 2
+					}
+				};
+
+				const commonLayout = {
+					height: 400,
+					margin: { t: 50, b: 50, l: 50, r: 50 },
+					paper_bgcolor: 'white',
+					plot_bgcolor: 'white',
+					font: { family: 'Arial', size: 12, color: '#506784' },
+					showlegend: true
+				};
+
+				// Update charts with individual error handling
+				const updatePromises = [
+					updateSingleChart('statusChart', () => Plotly.newPlot('statusChart', [{
+						values: data.status.values,
+						labels: data.status.labels,
+						type: 'pie',
+						hole: 0.4,
+						textinfo: 'label+percent',
+						hoverinfo: 'label+value+percent',
+						marker: {
+							colors: [
+								'#2ecc71',  // Success - Green
+								'#e74c3c',  // Error - Red
+								'#f39c12',  // Proxy - Orange
+								'#95a5a6'   // Not Run - Gray
+							]
+						}
+					}], {
+						...commonLayout,
+						title: { text: 'Status Distribution', font: { size: 16 } }
+					}, commonConfig)),
+
+					updateSingleChart('isExpiredChart', () => Plotly.newPlot('isExpiredChart', [{
+						values: data.isExpired.values,
+						labels: data.isExpired.labels,
+						type: 'pie',
+						hole: 0.4,
+						textinfo: 'label+percent',
+						hoverinfo: 'label+value+percent',
+						marker: { colors: ['#e74c3c', '#2ecc71'] }
+					}], {
+						...commonLayout,
+						title: { text: 'Expiration Status', font: { size: 16 } }
+					}, commonConfig)),
+
+					updateSingleChart('tableNameChart', () => Plotly.newPlot('tableNameChart', [{
+						y: data.table_name.labels,
+						x: data.table_name.values,
+						type: 'bar',
+						orientation: 'h',
+						marker: { color: '#9b59b6' }
+					}], {
+						...commonLayout,
+						title: { text: 'Table Name Distribution', font: { size: 16 } },
+						margin: { t: 50, b: 50, l: 150, r: 50 },
+						xaxis: { title: 'Count' },
+						yaxis: { title: '', automargin: true },
+						showlegend: false
+					}, commonConfig)),
+
+					updateSingleChart('moduleChart', () => {
+						// Sort and get top 10 modules
+						const sortedData = data.team.labels.map((label, i) => ({
+							label: label,
+							value: data.team.values[i]
+						})).sort((a, b) => b.value - a.value);
+
+						// Create the chart data
+						const chartData = [{
+							x: sortedData.map(d => d.label.slice(0,29)),
+							y: sortedData.map(d => d.value),
+							type: 'bar',
+							marker: { 
+								color: '#3498db',
+								width: 0.6  // Make bars slightly thinner
+							},
+							name: 'Top 10 Modules',
+							hovertemplate: '<b>%{x}</b><br>Count: %{y}<extra></extra>'
+						}];
+
+						updateDataTable(data);
+
+						// Create layout with fixed dimensions
+						/*const moduleLayout = {
+							...commonLayout,
+							title: { 
+								text: 'Module Distribution (Top 10)',
+								font: { size: 16 },
+								pad: { t: 20 }
+							},
+							margin: { t: 60, b: 120, l: 80, r: 20 },
+							autosize: false,
+							width: 1100,
+							height: 500,
+							xaxis: { 
+								tickangle: -45,
+								tickfont: { size: 11 },
+								range: [-0.5, 9.5],
+								title: {
+									text: 'Module Name',
+									standoff: 40
+								},
+								fixedrange: false,
+								constrain: 'domain',
+								automargin: true,
+								showgrid: false  // Remove grid lines
+							},
+							yaxis: { 
+								title: 'Count',
+								fixedrange: true,
+								automargin: true,
+								rangemode: 'tozero',
+								showgrid: true,  // Keep grid lines for y-axis
+								gridcolor: '#E1E1E1'  // Light gray grid lines
+							},
+							showlegend: false,
+							dragmode: 'pan',
+							plot_bgcolor: 'white',
+							paper_bgcolor: 'white',
+							bargap: 0.15,
+							uniformtext: {
+								mode: 'hide',
+								minsize: 8
+							}
+						};
+						*/
+						const moduleLayout = {
+    ...commonLayout,
+    title: { 
+        text: 'Module Distribution (Top 10)',
+        font: { size: 16 },
+        pad: { t: 20 }
+    },
+    margin: { t: 60, b: 120, l: 80, r: 20 },
+    autosize: false,
+    //width: 1100,
+    height: 500,
+    xaxis: { 
+        tickangle: -25,
+        tickfont: { size: 11 },
+        range: [-0.5, 9.5],
+        title: {
+            text: 'Module Name',
+            standoff: 40
+        },
+        fixedrange: false,
+        constrain: 'domain',
+        automargin: true,
+        showgrid: false,
+        ticktext: sortedData.slice(0, 10).map(d => d.label.length > 20 ? d.label.substring(0, 20) + '...' : d.label),
+        tickvals: sortedData.slice(0, 10).map((_, i) => i)
+    },
+    yaxis: { 
+        title: 'Count',
+        fixedrange: true,
+        automargin: true,
+        rangemode: 'tozero',
+        showgrid: true,
+        gridcolor: '#E1E1E1'
+    },
+    showlegend: false,
+    dragmode: 'pan',
+    plot_bgcolor: 'white',
+    paper_bgcolor: 'white',
+    bargap: 0.15,
+    uniformtext: {
+        mode: 'hide',
+        minsize: 8
+    }
+};
+
+
+						// Update config
+						const moduleConfig = {
+							...commonConfig,
+							responsive: false,
+							scrollZoom: true,
+							modeBarButtonsToAdd: [{
+								name: 'Show All',
+								icon: Plotly.Icons.home,
+								click: function(gd) {
+									Plotly.update(gd, {
+										x: [sortedData.map(d => d.label)],
+										y: [sortedData.map(d => d.value)]
+									}, {
+										'xaxis.range': [-0.5, sortedData.length - 0.5],
+										'xaxis.title.text': 'Module Name (scroll/drag to see more)',
+										'bargap': 0.1
+									});
+								}
+							}, {
+								name: 'Show Top 10',
+								icon: Plotly.Icons.autoscale,
+								click: function(gd) {
+									Plotly.update(gd, {
+										x: [sortedData.slice(0, 10).map(d => d.label)],
+										y: [sortedData.slice(0, 10).map(d => d.value)]
+									}, {
+										'xaxis.range': [-0.5, 9.5],
+										'xaxis.title.text': 'Module Name',
+										'bargap': 0.15
+									});
+								}
+							}],
+							displayModeBar: true,
+							displaylogo: false,
+							modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d']
+						};
+
+						return Plotly.newPlot('moduleChart', chartData, moduleLayout, moduleConfig);
+					})
+				];
+
+				if (data.timeline) {
+					updatePromises.push(
+						updateSingleChart('timelineChart', () => Plotly.newPlot('timelineChart', [{
+							x: data.timeline.dates,
+							y: data.timeline.counts,
+							type: 'scatter',
+							mode: 'lines+markers',
+							line: { color: '#2ecc71', width: 2 },
+							marker: { color: '#27ae60', size: 8 }
+						}], {
+							...commonLayout,
+							title: { text: 'Timeline', font: { size: 16 } },
+							xaxis: { 
+								title: 'Date',
+								tickangle: -45,
+								automargin: true
+							},
+							yaxis: { 
+								title: 'Count',
+								rangemode: 'tozero'
+							},
+							showlegend: false
+						}, commonConfig))
+					);
+				}
+
+
+				await Promise.allSettled(updatePromises);
+				window.dispatchEvent(new Event('resize'));
+
+			} catch (error) {
+				console.error('Error:', error);
+				showNotification(error.message || 'An error occurred while updating the charts', 'error');
+			} finally {
+				setTimeout(() => {
+					$('.chart-loading, #loading').fadeOut(200);
+				}, 200);
+			}
+		}
+
+
+		// Notification function
+		function showNotification(message, type = 'success') {
+			const notification = $('#notification');
+			notification.removeClass('success error')
+				.addClass(type)
+				.text(message)
+				.fadeIn()
+				.delay(3000)
+				.fadeOut();
+		}
+
+		// Event handlers
+		$(document).ready(function() {
+			// Initialize chart loading indicators
+			$('.chart-container').each(function() {
+				const container = $(this);
+				if (!container.find('.chart-loading').length) {
+					container.append(`
+						<div class="chart-loading" style="display: none;">
+							<div class="spinner-border text-primary" role="status">
+								<span class="visually-hidden">Loading...</span>
+							</div>
+						</div>
+					`);
+				}
+			});
+
+			loadFilterOptions();
+			updateCharts();
+
+			$('.select2').on('change', function() {
+				const filterId = this.id.replace('Filter', '');
+				currentFilters[filterId] = $(this).val() || [];
+				updateFilterCounts();
+				updateCharts();
+			});
+
+			$('#startDate, #endDate').on('change', function() {
+				currentFilters.startDate = $('#startDate').val();
+				currentFilters.endDate = $('#endDate').val();
+				updateCharts();
+			});
+
+			$('#clearDateFilter').click(function() {
+				$('#startDate, #endDate').val('');
+				currentFilters.startDate = '';
+				currentFilters.endDate = '';
+				updateCharts();
+			});
+
+			$('#clearFilters').click(function() {
+				$('.select2').val(null).trigger('change');
+				$('#startDate, #endDate').val('');
+				currentFilters = {
+					module: [],
+					file_name: [],
+					man: [],
+					status: [],
+					prty: [],
+					is_expired: [],
+					table_name: [],
+					issue_modules: [],
+					startDate: '',
+					endDate: ''
+				};
+				updateFilterCounts();
+				updateCharts();
+			});
+
+			function updateFilterCounts() {
+				Object.keys(currentFilters).forEach(key => {
+					if (key !== 'startDate' && key !== 'endDate') {
+						const count = currentFilters[key].length;
+						const countElement = $(`#${key}Count`);
+						if (count > 0) {
+							countElement.text(count).show();
+						} else {
+							countElement.hide();
+						}
+					}
+				});
+			}
+
+			$('#downloadFiltered').click(async function() {
+				$('#loading').show();
+				try {
+					const response = await fetch('/api/download-filtered', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify(currentFilters)
+					});
+					const blob = await response.blob();
+					const url = window.URL.createObjectURL(blob);
+					const a = document.createElement('a');
+					a.href = url;
+					a.download = 'filtered_results.csv';
+					document.body.appendChild(a);
+					a.click();
+					window.URL.revokeObjectURL(url);
+				} catch (error) {
+					console.error('Error downloading filtered results:', error);
+				} finally {
+					$('#loading').hide();
+				}
+			});
+		});
+		function updateDataTable(data) {
+			console.log("data",data.keys)
+			if (!data || !data.tableData) return;
+			
+			tableData = data.tableData;
+			renderTable();
+		}
+		function getPercentageClass(percentage, isError = false) {
+			if (isError) {
+				// For error percentage, higher is worse
+				if (percentage >= 50) return 'percentage-high';
+				if (percentage >= 25) return 'percentage-medium';
+				return 'percentage-low';
+			} else {
+				// For other percentages (found, recent), higher is better
+				if (percentage >= 75) return 'percentage-low';
+				if (percentage >= 50) return 'percentage-medium';
+				return 'percentage-high';
+			}
+		}
+
+		function renderTable() {
+			const tbody = document.getElementById('dataTableBody');
+			tbody.innerHTML = '';
+			
+			tableData.forEach(row => {
+				const errorClass = getPercentageClass(row.error_percentage || 0, true);
+				const foundClass = getPercentageClass(row.found_percentage || 0, false);
+				const expiredClass = getPercentageClass(row.expired_percentage || 0, true);
+				const recentClass = getPercentageClass(row.recent_percentage || 0, false);
+
+				const tr = document.createElement('tr');
+				tr.innerHTML = `
+					<td>${row.module || ''}</td>
+					<td>${row.total_count || 0}</td>
+					<td>${row.error_count || 0}</td>
+					<td class="${errorClass}" style="--percentage-width: ${row.error_percentage || 0}%">${row.error_percentage || 0}%</td>
+					<td>${row.found_count || 0}</td>
+					<td class="${foundClass}" style="--percentage-width: ${row.found_percentage || 0}%">${row.found_percentage || 0}%</td>
+					<td>${row.expired_count || 0}</td>
+					<td class="${expiredClass}" style="--percentage-width: ${row.expired_percentage || 0}%">${row.expired_percentage || 0}%</td>
+					<td>${row.recent_count || 0}</td>
+					<td class="${recentClass}" style="--percentage-width: ${row.recent_percentage || 0}%">${row.recent_percentage || 0}%</td>
+				`;
+				tbody.appendChild(tr);
+			});
+		}
+
+		function sortTable(column) {
+			if (currentSortColumn === column) {
+				sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+			} else {
+				currentSortColumn = column;
+				sortDirection = 'asc';
+			}
+
+			tableData.sort((a, b) => {
+				let valueA = a[column] || 0;
+				let valueB = b[column] || 0;
+
+				// Handle numeric columns
+				if (column.includes('count') || column.includes('percentage')) {
+					valueA = parseFloat(valueA);
+					valueB = parseFloat(valueB);
+					return sortDirection === 'asc' ? valueA - valueB : valueB - valueA;
+				}
+
+				// Handle text columns (module)
+				if (sortDirection === 'asc') {
+					return valueA.toString().localeCompare(valueB.toString());
+				} else {
+					return valueB.toString().localeCompare(valueA.toString());
+				}
+			});
+
+			renderTable();
+		}
+
+		// Add event listeners for table sorting
+		document.addEventListener('DOMContentLoaded', function() {
+			const table = document.getElementById('dataTable');
+			if (table) {
+				table.querySelector('thead').addEventListener('click', function(e) {
+					const th = e.target.closest('th');
+					if (th) {
+						const column = th.dataset.sort;
+						if (column) {
+							sortTable(column);
+						}
+					}
+				});
+			}
+		});
+	</script>
+</body>
+</html>
