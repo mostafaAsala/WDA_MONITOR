@@ -26,6 +26,19 @@ def load_data():
 			'Error' if any(err in str(x) for err in ['Error', 'Exception', 'Incomplete']) else
 			x
 		)
+
+        grouped_data = pd.pivot_table(
+			global_df,
+			index=['man', 'module', 'file_id', 'status',  'last_run_date',
+				'table_name', 'prty', 'file_name', 'is_expired'],
+			values='id',  # Any column can be used; it’s just for counting
+			aggfunc='count'  # Counts rows
+		).reset_index()
+
+		# Rename the count column
+        grouped_data.rename(columns={'id': 'count'}, inplace=True)
+
+        print("Length of data: ",len(global_df), len(grouped_data))
         return True
     except Exception as e:
         print(f"Error loading data: {e}")
@@ -204,7 +217,7 @@ def get_filter_options():
 		
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/chart-data', methods=['POST'])
+@app.route('/api/chart-data', methods=['GET','POST'])
 def get_chart_data():
 	try:
 		app.logger.info('Fetching chart data')

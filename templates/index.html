@@ -232,190 +232,6 @@
 
 					</div>
 
-					<!-- Right Column - Visualizations -->
-					<div class="col-md-10">
-						<!-- Stats Cards -->
-						<div class="row mb-4">
-							<div class="col-md-1-7">
-								<div class="card stat-card total-parts">
-									<div class="card-body">
-										<div class="d-flex justify-content-between align-items-center">
-											<div>
-												<h6 class="card-subtitle mb-2">Total Parts</h6>
-												<h2 class="card-title mb-0" id="totalPartsCount">0</h2>
-											</div>
-											<i class="fas fa-boxes stat-icon"></i>
-										</div>
-									</div>
-								</div>
-							</div>
-							<div class="col-md-1-7">
-								<div class="card stat-card expired-parts">
-									<div class="card-body">
-										<div class="d-flex justify-content-between align-items-center">
-											<div>
-												<h6 class="card-subtitle mb-2">Expired Parts</h6>
-												<h2 class="card-title mb-0" id="expiredPartsCount">0</h2>
-											</div>
-											<i class="fas fa-exclamation-circle stat-icon"></i>
-										</div>
-									</div>
-								</div>
-							</div>
-							<div class="col-md-1-7">
-								<div class="card stat-card active-parts">
-									<div class="card-body">
-										<div class="d-flex justify-content-between align-items-center">
-											<div>
-												<h6 class="card-subtitle mb-2">Active Parts</h6>
-												<h2 class="card-title mb-0" id="activePartsCount">0</h2>
-											</div>
-											<i class="fas fa-check-circle stat-icon"></i>
-										</div>
-									</div>
-								</div>
-							</div>
-							<div class="col-md-1-7">
-								<div class="card stat-card error-parts">
-									<div class="card-body">
-										<div class="d-flex justify-content-between align-items-center">
-											<div>
-												<h6 class="card-subtitle mb-2">Error Parts</h6>
-												<h2 class="card-title mb-0" id="errorPartsCount">0</h2>
-											</div>
-											<i class="fas fa-times-circle stat-icon"></i>
-										</div>
-									</div>
-								</div>
-							</div>
-							<div class="col-md-1-7">
-								<div class="card stat-card missing-parts">
-									<div class="card-body">
-										<div class="d-flex justify-content-between align-items-center">
-											<div>
-												<h6 class="card-subtitle mb-2">Missing Parts</h6>
-												<h2 class="card-title mb-0" id="missingPartsCount">0</h2>
-											</div>
-											<i class="fas fa-exclamation-circle stat-icon"></i>
-										</div>
-									</div>
-								</div>
-							</div>
-							<div class="col-md-1-7">
-								<div class="card stat-card module-count">
-									<div class="card-body">
-										<div class="d-flex justify-content-between align-items-center">
-											<div>
-												<h6 class="card-subtitle mb-2">Modules Count</h6>
-												<h2 class="card-title mb-0" id="modulesCount">0</h2>
-											</div>
-											<i class="fas fa-address-book stat-icon"></i>
-										</div>
-									</div>
-								</div>
-							</div>
-							<div class="col-md-1-7">
-								<div class="card stat-card issue-module-count">
-									<div class="card-body">
-										<div class="d-flex justify-content-between align-items-center">
-											<div>
-												<h6 class="card-subtitle mb-2">Issue Modules</h6>
-												<h2 class="card-title mb-0" id="IssuemodulesCount">0</h2>
-											</div>
-											<i class="fas fa-minus-circle stat-icon"></i>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-
-
-						<!-- Charts 
-						<div class="row mb-4">
-							<div class="col-md-6">
-								<div class="position-relative h-100">
-									<div id="statusPieChart" class="chart-container"></div>
-									<div class="chart-loading" style="display: none;">
-										<div class="spinner-border text-primary" role="status">
-											<span class="visually-hidden">Loading...</span>
-										</div>
-									</div>
-								</div>
-							</div>
-							<div class="col-md-6">
-								<div class="position-relative h-100">
-									<div id="moduleBarChart" class="chart-container"></div>
-									<div class="chart-loading" style="display: none;">
-										<div class="spinner-border text-primary" role="status">
-											<span class="visually-hidden">Loading...</span>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-
-						<div class="row mb-4">
-							<div class="col-md-12">
-								<div class="position-relative h-100">
-									<div id="prtyColumnChart" class="chart-container"></div>
-									<div class="chart-loading" style="display: none;">
-										<div class="spinner-border text-primary" role="status">
-											<span class="visually-hidden">Loading...</span>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-
-						<div class="row mb-4">
-							<div class="col-md-6">
-								<div class="position-relative h-100">
-									<div id="tableNameChart" class="chart-container"></div>
-									<div class="chart-loading" style=>
-										<div class="spinner-border text-primary" role="status">
-											<span class="visually-hidden">Loading...</span>
-										</div>
-									</div>
-								</div>
-							</div>
-							<div class="col-md-6">
-								<div class="position-relative h-100">
-									<div id="isExpiredChart" class="chart-container"></div>
-									<div class="chart-loading" style="display: none;">
-										<div class="spinner-border text-primary" role="status">
-											<span class="visually-hidden">Loading...</span>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-
-						<div class="row mb-4">
-							<div class="col-md-12">
-								<div class="position-relative h-100">
-									<div id="dataTableChart" class="chart-container"></div>
-									<div class="chart-loading" style="display: none;">
-										<div class="spinner-border text-primary" role="status">
-											<span class="visually-hidden">Loading...</span>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-
-						<div class="row">
-							<div class="col-md-12">
-								<div class="position-relative h-100">
-									<div id="timelineChart" class="chart-container"></div>
-									<div class="chart-loading" style="display: none;">
-										<div class="spinner-border text-primary" role="status">
-											<span class="visually-hidden">Loading...</span>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-						-->
 
 </div>
 
@@ -450,30 +266,7 @@
 			document.querySelector('.loading').style.display = 'none';
 		}
 
-		function loadCSVData() {
-			showLoading();
-			fetch('/results.csv')
-				.then(response => {
-					if (!response.ok) {
-						throw new Error('Failed to load CSV file');
-					}
-					return response.text();
-				})
-				.then(text => {
-					csvData = Papa.parse(text, { 
-						header: true,
-						skipEmptyLines: true,
-						transformHeader: h => h.trim().toLowerCase()
-					}).data;
-					updateCharts();
-					hideLoading();
-				})
-				.catch(error => {
-					console.error('Error loading CSV:', error);
-					showNotification('Error loading data: ' + error.message, 'danger');
-					hideLoading();
-				});
-		}
+		
 
 		// Login functionality
 		const loginModal = new bootstrap.Modal(document.getElementById('loginModal'), {
@@ -515,7 +308,7 @@
 				}));
 				loginModal.hide();
 				document.querySelector('.container-fluid').style.display = 'block';
-				loadCSVData();
+				//loadCSVData();
 			} else {
 				document.getElementById('loginError').style.display = 'block';
 			}
@@ -596,227 +389,6 @@
 
 		// Function to handle data updates
 
-		function updateCharts() {
-			if (!csvData || csvData.length === 0) {
-				return;
-			}
-
-			// Show loading indicators before updating charts
-			const chartLoadings = document.querySelectorAll('.chart-loading');
-			chartLoadings.forEach(loading => loading.style.display = 'flex');
-
-			try {
-				// Update stat cards
-				const totalParts = csvData.length;
-				const expiredParts = csvData.filter(row => row.is_expired === "True").length;
-				const activeParts = csvData.filter(row => row.is_expired === "False").length;
-				const errorParts = csvData.filter(row => 
-					row.status === "Error" || 
-					row.status === "Proxy" || 
-					row.status === "Incomplete Download"
-				).length;
-				const missingParts = csvData.filter(row => row.table_name === "not run").length;
-				const uniqueModules = new Set(csvData.map(row => row.module));
-
-				// Update stat cards
-				document.getElementById('totalPartsCount').textContent = totalParts;
-				document.getElementById('expiredPartsCount').textContent = expiredParts;
-				document.getElementById('activePartsCount').textContent = activeParts;
-				document.getElementById('errorPartsCount').textContent = errorParts;
-				document.getElementById('missingPartsCount').textContent = missingParts;
-				document.getElementById('modulesCount').textContent = uniqueModules.size;
-
-				// Common chart layout and config
-				const commonLayout = {
-					height: 450,
-					margin: { t: 30, b: 50, l: 50, r: 20 },
-					paper_bgcolor: 'white',
-					plot_bgcolor: 'white',
-					font: { family: 'Arial', size: 12, color: '#506784' },
-					showlegend: true,
-					legend: { orientation: 'h', y: -0.2 }
-				};
-
-				const config = {
-					responsive: true,
-					displayModeBar: true,
-					displaylogo: false,
-					modeBarButtonsToRemove: ['lasso2d', 'select2d']
-				};
-
-				// Status Pie Chart
-				const statusCounts = {};
-				csvData.forEach(row => {
-					statusCounts[row.status] = (statusCounts[row.status] || 0) + 1;
-				});
-
-				Plotly.newPlot('statusPieChart', [{
-					values: Object.values(statusCounts),
-					labels: Object.keys(statusCounts),
-					type: 'pie',
-					hole: 0.4,
-					textinfo: 'label+percent'
-				}], {
-					...commonLayout,
-					title: 'Status Distribution'
-				}, config);
-
-				// Module Bar Chart
-				const moduleCounts = {};
-				csvData.forEach(row => {
-					moduleCounts[row.module] = (moduleCounts[row.module] || 0) + 1;
-				});
-
-				const sortedModuleCounts = Object.entries(moduleCounts)
-					.sort((a, b) => b[1] - a[1]);
-
-				Plotly.newPlot('moduleBarChart', [{
-					x: sortedModuleCounts.map(item => item[0]),
-					y: sortedModuleCounts.map(item => item[1]),
-					type: 'bar',
-					marker: { color: 'rgb(55, 83, 109)' }
-				}], {
-					...commonLayout,
-					title: 'Module Distribution',
-					xaxis: { tickangle: -45, automargin: true }
-				}, config);
-
-				// PRTY Column Chart
-				const prtyCounts = {};
-				csvData.forEach(row => {
-					prtyCounts[row.prty] = (prtyCounts[row.prty] || 0) + 1;
-				});
-
-				Plotly.newPlot('prtyColumnChart', [{
-					x: Object.keys(prtyCounts),
-					y: Object.values(prtyCounts),
-					type: 'bar',
-					marker: { color: 'rgb(26, 118, 255)' }
-				}], {
-					...commonLayout,
-					title: 'PRTY Distribution',
-					xaxis: { tickangle: -45, automargin: true }
-				}, config);
-
-				// Table Name Chart
-				const tableNameCounts = {};
-				csvData.forEach(row => {
-					tableNameCounts[row.table_name] = (tableNameCounts[row.table_name] || 0) + 1;
-				});
-
-				Plotly.newPlot('tableNameChart', [{
-					x: Object.keys(tableNameCounts),
-					y: Object.values(tableNameCounts),
-					type: 'bar',
-					marker: { color: 'rgb(142, 68, 173)' }
-				}], {
-					...commonLayout,
-					title: 'Table Name Distribution',
-					xaxis: { tickangle: -45, automargin: true }
-				}, config);
-
-				// Is Expired Pie Chart
-				const isExpiredCounts = {
-					'Expired': expiredParts,
-					'Not Expired': activeParts
-				};
-
-				Plotly.newPlot('isExpiredChart', [{
-					values: Object.values(isExpiredCounts),
-					labels: Object.keys(isExpiredCounts),
-					type: 'pie',
-					hole: 0.4,
-					textinfo: 'label+percent',
-					marker: { colors: ['#e74c3c', '#2ecc71'] }
-				}], {
-					...commonLayout,
-					title: 'Expiration Status'
-				}, config);
-
-				// Timeline Chart
-				const timelineData = csvData.reduce((acc, row) => {
-					const date = row.last_run_date;
-					acc[date] = (acc[date] || 0) + 1;
-					return acc;
-				}, {});
-
-				const sortedDates = Object.keys(timelineData).sort();
-
-				Plotly.newPlot('timelineChart', [{
-					x: sortedDates,
-					y: sortedDates.map(date => timelineData[date]),
-					type: 'scatter',
-					mode: 'lines+markers',
-					line: { color: '#2ecc71' },
-					marker: { color: '#27ae60' }
-				}], {
-					...commonLayout,
-					title: 'Timeline',
-					xaxis: { title: 'Date', tickangle: -45 },
-					yaxis: { title: 'Count' }
-				}, config);
-
-				// Data Table Chart
-				const tableData = [{
-					type: 'table',
-					columnwidth: Object.keys(csvData[0]).map(key => {
-						const maxLength = Math.max(...csvData.map(row => String(row[key] || '').length));
-						if (maxLength < 10) return 150;
-						if (maxLength < 20) return 200;
-						if (maxLength < 30) return 300;
-						return 400;
-					}),
-					header: {
-						values: Object.keys(csvData[0]).map(key => key.toUpperCase()),
-						align: 'center',
-						line: { width: 1.5, color: '#506784' },
-						fill: { color: '#2c3e50' },
-						font: { family: 'Arial', size: 11, color: 'white', weight: 'bold' },
-						height: 40
-					},
-					cells: {
-						values: Object.keys(csvData[0]).map(key => 
-							csvData.map(row => {
-								const value = row[key];
-								if (value === null || value === undefined) return '-';
-								const strValue = String(value);
-								return strValue.length > 100 ? strValue.substring(0, 50) + '...' : strValue;
-							})
-						),
-						align: Object.keys(csvData[0]).map(key => 
-							['status', 'prty', 'is_expired'].includes(key) ? 'center' : 'left'
-						),
-						line: { color: '#506784', width: 1 },
-						fill: { color: [['rgba(250, 250, 250, 1)', 'rgba(245, 245, 245, 1)'].slice(0, csvData.length)] },
-						font: { family: 'Arial', size: 11, color: '#506784' },
-						height: 25
-					}
-				}];
-
-				const tableLayout = {
-					...commonLayout,
-					height: 700,
-					margin: { t: 30, b: 30, l: 10, r: 10 },
-					title: 'Data Table'
-				};
-
-				Plotly.newPlot('dataTableChart', tableData, tableLayout, {
-					...config,
-					displayModeBar: false
-				});
-
-				// Trigger window resize for proper rendering
-				setTimeout(() => {
-					window.dispatchEvent(new Event('resize'));
-				}, 100);
-
-			} catch (error) {
-				console.error('Error updating charts:', error);
-				showNotification('Error updating charts', 'danger');
-			} finally {
-				chartLoadings.forEach(loading => loading.style.display = 'none');
-			}
-		}
 
 
 
@@ -842,7 +414,7 @@
 		});
 
 		// Initialize data loading when DOM is ready
-		document.addEventListener('DOMContentLoaded', loadCSVData);
+		//document.addEventListener('DOMContentLoaded', loadCSVData);
 
 		// File Upload Handler
 		document.getElementById('uploadForm').addEventListener('submit', async (e) => {
@@ -932,7 +504,7 @@
 				if (response.ok) {
 					showNotification('Status check completed successfully');
 					if (result.data) {
-						loadCSVData();
+						//loadCSVData();
 					}
 				} else {
 					showNotification(result.error, 'danger');
@@ -970,7 +542,7 @@
 					a.click();
 					window.URL.revokeObjectURL(url);
 					showNotification('Results downloaded successfully');
-					loadCSVData();
+					//loadCSVData();
 				} else {
 					const result = await response.json();
 					showNotification(result.error, 'danger');

@@ -41,137 +41,7 @@ def Get_status(files_list=None, ignore_date=True, daily_export=False):
 
     print("Calculating Status for: ", files_string)
         
-    query = """
-        WITH parts_id AS (
-            SELECT 
-                p.ID AS PART_ID, 
-                p.PART, 
-                p.MAN, 
-                p.MODULE, 
-                p.FILE_ID, 
-                CASE 
-                    WHEN m.module_name IS NULL THEN 'not_valid' 
-                    ELSE p.STATUS 
-                END AS STATUS,
-                p.CM_DATE, 
-                p.LAST_RUN_DATE, 
-                p.TABLE_NAME, 
-                p."Features", 
-                p."monitor features", 
-                m.MAN_ID, 
-                m.MODULE_ID
-            FROM parts p
-            LEFT JOIN updatesys.tbl_man_modules@new3_n m 
-            ON p.module = m.module_name
-        ),
-        found_notfound_table AS (
-        SELECT 
-            pm.PART_ID,
-            pm.PART,
-            pm.MAN,
-            pm.MODULE,
-            pm.FILE_ID,
-            pm.LAST_RUN_DATE,
-            pm.TABLE_NAME,
-            pm.CM_DATE,
-            pm."Features",
-            pm."monitor features",
-            pm.MAN_ID,
-            pm.MODULE_ID,
-            CASE 
-                WHEN pm.STATUS = 'not_valid' THEN 'not_valid'
-                WHEN NOT EXISTS (
-                    SELECT 1 
-                    FROM updatesys.TBL_Prty_pns_@NEW3_N st 
-                    WHERE st.pn = pm.PART AND st.man_id = pm.MAN_ID
-                ) THEN 'not SE part'
-                WHEN EXISTS (
-                    SELECT 1 
-                    FROM updatesys.TBL_Prty_pns_@NEW3_N st 
-                    WHERE st.pn = pm.PART AND st.man_id = pm.MAN_ID AND st.mod_id = pm.MODULE_ID 
-                    AND st.LRD is null and st.V_NOTFOUND_DAT is null
-                ) THEN 'not run'
-                WHEN EXISTS (
-                    SELECT 1 
-                    FROM updatesys.TBL_Prty_pns_@NEW3_N st 
-                    WHERE st.pn = pm.PART AND st.man_id = pm.MAN_ID AND st.mod_id = pm.MODULE_ID 
-                    AND NVL(cm.XLP_RELEASEDATE_FUNCTION_D(st.LRD), TO_DATE('01-JAN-1900', 'DD-MON-YYYY')) > NVL(st.V_NOTFOUND_DAT, TO_DATE('01-JAN-1900', 'DD-MON-YYYY'))
-                ) THEN 'found'
-                ELSE 'not found'
-            END AS STATUS,
-            (SELECT 
-                GREATEST(NVL(cm.XLP_RELEASEDATE_FUNCTION_D(st.LRD), TO_DATE('01-JAN-1900', 'DD-MON-YYYY')), NVL(st.V_NOTFOUND_DAT, TO_DATE('01-JAN-1900', 'DD-MON-YYYY')))
-            FROM updatesys.TBL_Prty_pns_@NEW3_N st 
-            WHERE st.pn = pm.PART AND st.man_id = pm.MAN_ID AND st.mod_id = pm.MODULE_ID
-            FETCH FIRST 1 ROWS ONLY -- Ensures only one result is returned
-            ) AS LRD_V_NOTFOUND_MAX,
-            (SELECT 
-                prty
-            FROM updatesys.TBL_Prty_pns_@NEW3_N st 
-            WHERE st.pn = pm.PART AND st.man_id = pm.MAN_ID AND st.mod_id = pm.MODULE_ID
-            FETCH FIRST 1 ROWS ONLY -- Ensures only one result is returned
-            ) AS prty
-        FROM parts_id pm
 
-        ),
-        not_f As
-        (
-            select 
-                fnf_1.* ,
-                nf.check_date,
-                nf.status as status_2
-            from found_notfound_table fnf_1 
-            left join  webspider.TBL_PRSYS_FEED_NOTFOUND@NEW3_N nf on 
-                nf.mpn = fnf_1.PART AND 
-                nf.man_id = fnf_1.MAN_ID AND 
-                nf.mod_id = fnf_1.MODULE_ID
-
-        ),
-        found AS(select 1 from dual)
-
-
-        SELECT DISTINCT
-            PART_ID, 
-            PART, 
-            MAN, 
-            MODULE, 
-            FILE_ID, 
-            CM_DATE, 
-            LAST_RUN_DATE, 
-            TABLE_NAME, 
-            "Features", 
-            "monitor features", 
-            MAN_ID, 
-            MODULE_ID, 
-            STATUS,
-            prty,
-            STATUS_2,
-            LRD_V_NOTFOUND_MAX,
-            check_date AS max_check_date
-        FROM (
-            SELECT 
-                fnf_1.PART_ID, 
-                fnf_1.PART, 
-                fnf_1.MAN, 
-                fnf_1.MODULE, 
-                fnf_1.FILE_ID, 
-                fnf_1.CM_DATE, 
-                fnf_1.LAST_RUN_DATE, 
-                fnf_1.TABLE_NAME, 
-                fnf_1."Features", 
-                fnf_1."monitor features", 
-                fnf_1.MAN_ID, 
-                fnf_1.MODULE_ID, 
-                fnf_1.prty,
-                fnf_1.STATUS,
-                fnf_1.STATUS_2,
-                fnf_1.check_date,
-                fnf_1.LRD_V_NOTFOUND_MAX,
-                ROW_NUMBER() OVER (PARTITION BY fnf_1.PART_ID ORDER BY NVL(fnf_1.check_date, TO_DATE('01-JAN-1900', 'DD-MON-YYYY')) DESC) AS rn
-            FROM not_f fnf_1
-        ) ranked
-        WHERE rn = 1
-    """
     query = text(f"""
         MERGE INTO parts p
         USING (
@@ -329,7 +199,10 @@ def Get_status(files_list=None, ignore_date=True, daily_export=False):
                 WHERE file_name in {files_string}
                 
         """
-    
+    print("found parts begin")
+    Found_parts_Status(engine=engine,files_string=files_string)
+    print("found parts done")
+    return
     
     try:
         with engine.begin() as connection:
@@ -346,6 +219,185 @@ def Get_status(files_list=None, ignore_date=True, daily_export=False):
     
     
     return Download_results(files_string,daily_export)
+
+
+def Found_parts_Status(engine, files_string):
+    """
+    Process parts by executing dynamic SQL queries.
+    Use file names to fetch corresponding file IDs and process the data.
+
+    Args:
+        engine: SQLAlchemy engine connected to the database.
+        file_names: List of file names to filter on.
+    """
+    with engine.begin() as connection:
+        try:
+            # Convert the list of file names into a format suitable for SQL IN clause
+            
+            # Query to fetch file IDs based on file names
+            file_id_query = text(f"""
+                SELECT id 
+                FROM uploaded_files 
+                WHERE file_name IN {files_string}
+            """)
+            # Fetch all file IDs
+            file_ids = connection.execute(file_id_query)
+            file_ids = file_ids.fetchall()
+            file_ids = [row[0] for row in file_ids]
+            
+            if not file_ids:
+                print("No matching file IDs found for the given file names.")
+                return
+
+            # Process each file ID
+            for file_id in file_ids:
+                # Query to get unique parts and related information
+                part_query = text(f"""
+                    SELECT DISTINCT
+                        m.module_name,
+                        m.MAN_ID, 
+                        m.MODULE_ID
+                    FROM 
+                        (SELECT * FROM parts) p
+                    LEFT JOIN 
+                        updatesys.tbl_man_modules@new3_n m 
+                    ON 
+                        p.MODULE = m.MODULE_NAME
+                    WHERE 
+                        m.MAN_ID IS NOT NULL
+                        AND m.MODULE_ID IS NOT NULL
+                        AND p.file_id = :file_id
+                """)
+                
+                # Fetch the records for the current file_id
+                result = connection.execute(part_query, {"file_id": file_id}).fetchall()
+
+                for rec in result:
+                    module_name = rec[0]
+                    man_id = rec[1]
+                    module_id = rec[2]
+
+                    # Construct dynamic table name
+                    table_name = f"updatesys.tbl_{man_id}_{module_id}@new3_n"
+                    # First dynamic SQL query (v_sql)
+                    v_sql = f"""
+                        MERGE INTO parts tgt
+                        USING (
+                            WITH RankedFeatures AS (
+                                SELECT 
+                                    p.ID AS PART_ID,
+                                    p.PART,
+                                    cm.XLP_RELEASEDATE_FUNCTION_D(tbl.DAT) AS NEW_LAST_RUN_DATE,
+                                    tbl.FEATURE_NAME,
+                                    RANK() OVER (PARTITION BY p.ID, p.PART ORDER BY tbl.DAT DESC) AS rnk
+                                FROM 
+                                    (SELECT * FROM parts WHERE module = '{module_name}') p
+                                JOIN 
+                                    (SELECT DISTINCT PART, FEATURE_NAME, DAT
+                                     FROM {table_name}) tbl
+                                ON 
+                                    p.PART = tbl.PART
+                            )
+                            SELECT 
+                                PART_ID,
+                                PART,
+                                TO_CLOB(
+                                    XMLAGG(
+                                        XMLELEMENT(e, FEATURE_NAME || '|').EXTRACT('//text()')
+                                    ).GetClobVal()
+                                ) AS FEATURES,
+                                TO_DATE(NEW_LAST_RUN_DATE, 'DD-MON-YY') as NEW_LAST_RUN_DATE
+                            FROM 
+                                RankedFeatures
+                            WHERE 
+                                rnk = 1
+                            GROUP BY 
+                                PART_ID,
+                                PART,
+                                NEW_LAST_RUN_DATE
+                        ) src
+                        ON (tgt.ID = src.PART_ID AND tgt.PART = src.PART)
+                        WHEN MATCHED THEN
+                            UPDATE 
+                            SET 
+                                tgt."Features" = FEATURES,
+                                tgt.LAST_RUN_DATE = CASE 
+                                    WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE > tgt.LAST_RUN_DATE) 
+                                    THEN TO_DATE(src.NEW_LAST_RUN_DATE, 'DD-MON-YY')
+                                    ELSE TO_DATE(tgt.LAST_RUN_DATE, 'DD-MON-YY')
+                                END,
+                                tgt.status = CASE 
+                                    WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE >= tgt.LAST_RUN_DATE) 
+                                    THEN 'found' 
+                                    ELSE tgt.status 
+                                END,
+                                tgt.TABLE_NAME = CASE 
+                                    WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE >= tgt.LAST_RUN_DATE) and tgt.TABLE_NAME <> 'not SE part'
+                                    THEN 'found' 
+                                    ELSE tgt.TABLE_NAME 
+                                END
+                    """
+                    # Second dynamic SQL query (v_sql2)
+                    v_sql2 = f"""
+                        MERGE INTO parts tgt
+                        USING (
+                            WITH RankedFeatures AS (
+                                SELECT 
+                                    p.ID AS PART_ID,
+                                    p.PART,
+                                    cm.XLP_RELEASEDATE_FUNCTION_D(tbl.DAT) AS NEW_LAST_RUN_DATE,
+                                    RANK() OVER (PARTITION BY p.ID, p.PART ORDER BY tbl.DAT DESC) AS rnk
+                                FROM 
+                                    (SELECT * FROM parts WHERE module = '{module_name}') p
+                                JOIN 
+                                    (SELECT DISTINCT PART, DAT
+                                     FROM {table_name}) tbl
+                                ON 
+                                    p.PART = tbl.PART
+                            )
+                            SELECT DISTINCT
+                                PART_ID,
+                                PART,
+                                TO_DATE(NEW_LAST_RUN_DATE, 'DD-MON-YY') as NEW_LAST_RUN_DATE
+                            FROM 
+                                RankedFeatures
+                            WHERE 
+                                rnk = 1
+                        ) src
+                        ON (tgt.ID = src.PART_ID AND tgt.PART = src.PART)
+                        WHEN MATCHED THEN
+                            UPDATE 
+                            SET 
+                                tgt.LAST_RUN_DATE = CASE 
+                                    WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE > tgt.LAST_RUN_DATE) 
+                                    THEN TO_DATE(src.NEW_LAST_RUN_DATE, 'DD-MON-YY')
+                                    ELSE TO_DATE(tgt.LAST_RUN_DATE, 'DD-MON-YY')
+                                END,
+                                tgt.status = CASE 
+                                    WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE >= tgt.LAST_RUN_DATE) 
+                                    THEN 'found' 
+                                    ELSE tgt.status 
+                                END,
+                                tgt.TABLE_NAME = CASE 
+                                    WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE >= tgt.LAST_RUN_DATE) and tgt.TABLE_NAME <> 'not SE part'
+                                    THEN 'found' 
+                                    ELSE tgt.TABLE_NAME 
+                                END
+                    """
+                    # Try to execute v_sql first
+                    try:
+                        connection.execute(text(v_sql))
+                    except Exception as e:
+                        print(f"Error executing v_sql for module {module_name}, table {table_name}: {e}")
+                        print("Attempting to execute v_sql2...")
+                        try:
+                            connection.execute(text(v_sql2))
+                        except Exception as e2:
+                            print(f"Error executing v_sql2 for module {module_name}, table {table_name}: {e2}")
+
+        except Exception as e:
+            print(f"Error during processing: {e}")
+
 
 def Download_results(files_list = None,daily_export=False):
     print("fetching_result...")
