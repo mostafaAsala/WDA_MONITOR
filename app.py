@@ -8,9 +8,15 @@ from datetime import datetime
 from Parts_Upload import main_upload_parts, main_delete_file
 from check_status import Get_status, Download_results, get_status_statistics
 from config import Config
-
-
+import threading
+import filelock
+import tempfile
 import traceback
+
+# Add locks for critical sections
+status_lock = threading.Lock()
+file_lock = filelock.FileLock(os.path.join(Config.result_path, "results.csv.lock"))
+df_lock = threading.Lock()
 print("Done importing...")
 # Add Oracle Client to PATH
 os.environ["PATH"] = os.path.join(os.path.dirname(__file__), Config.INSTANT_CLIENT) + ";" + os.environ["PATH"]
@@ -139,24 +145,30 @@ def delete_file(filename):
 
 @app.route('/status', methods=['POST'])
 def check_status():
-	selected_files = request.json.get('files', [])
-	ignore_date = request.json.get('ignore_date', True)
-	
-	try:
-		app.logger.info(f'Checking status for files: {selected_files}')
-		df, file_name = Get_status(selected_files, ignore_date)
-		status_stats = get_status_statistics(df)
-		app.logger.info('Status check completed successfully')
-		return_object = jsonify({
-			'status': 'Success', 
-			'message': 'Status updated successfully',
-			'data': status_stats
-		})
-		
-		return return_object
-	except Exception as e:
-		app.logger.error(f'Error checking status: {str(e)}')
-		return jsonify({'error': str(e)}), 500
+    selected_files = request.json.get('files', [])
+    ignore_date = request.json.get('ignore_date', True)
+    
+    try:
+        app.logger.info(f'Checking status for files: {selected_files}')
+        
+        with status_lock:  # Ensure only one status check at a time
+            df, file_name = Get_status(selected_files, ignore_date)
+            
+            # Use file lock when writing results
+            with file_lock:
+                status_stats = get_status_statistics(df)
+                
+            app.logger.info('Status check completed successfully')
+            return_object = jsonify({
+                'status': 'Success', 
+                'message': 'Status updated successfully',
+                'data': status_stats
+            })
+            
+            return return_object
+    except Exception as e:
+        app.logger.error(f'Error checking status: {str(e)}')
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/refresh-files', methods=['GET'])
 def refresh_files():
@@ -202,13 +214,14 @@ def get_filter_options():
         if global_df is None:
             load_data()
         print(global_df['status'].dropna().unique().tolist())
+        print("Prty: ",global_df['prty'])
         return jsonify({
             'teams': sorted(global_df['module'].unique().tolist()),
             'status': sorted(global_df['status'].dropna().unique().tolist()),
             'Files': sorted(global_df['file_name'].unique().tolist()),
             'projects': sorted(global_df['file_name'].unique().tolist()),
             'manufacturers': sorted(global_df[global_df['man'].notna()]['man'].unique().tolist()),
-            'priorities': sorted(global_df[global_df['prty'].notna()]['prty'].unique().tolist()),
+            'priorities': sorted(global_df['prty'].dropna().unique().tolist()),
             'table_name': sorted(global_df[global_df['table_name'].notna()]['table_name'].unique().tolist())
         })
     except Exception as e:
