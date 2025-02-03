@@ -504,6 +504,22 @@
 				transform: rotate(360deg);
 			}
 		}
+
+		.btn-group .btn-outline-primary {
+			border-color: #3498db;
+			color: #3498db;
+		}
+
+		.btn-group .btn-outline-primary.active {
+			background-color: #3498db;
+			color: white;
+		}
+
+		.btn-group .btn-outline-primary:hover {
+			background-color: #2980b9;
+			border-color: #2980b9;
+			color: white;
+		}
 	</style>
 </head>
 <body>
@@ -778,6 +794,12 @@
 			<!-- Timeline Chart -->
 			<div class="col-md-6 chart-container">
 				<h4 class="chart-title">Timeline</h4>
+				<div class="btn-group mb-3" role="group" aria-label="Time Granularity">
+					<button type="button" class="btn btn-outline-primary active" data-granularity="day">Day</button>
+					<button type="button" class="btn btn-outline-primary" data-granularity="month">Month</button>
+					<button type="button" class="btn btn-outline-primary" data-granularity="quarter">Quarter</button>
+					<button type="button" class="btn btn-outline-primary" data-granularity="year">Year</button>
+				</div>
 				<div class="position-relative h-100">
 					<div id="timelineChart" class="chart-container"></div>
 					<div class="chart-loading" style="display: none;">
@@ -834,6 +856,88 @@
 		</div>
 	</div>
 	<script>
+
+		const commonLayout = {
+			height: 400,
+			margin: { t: 50, b: 50, l: 50, r: 50 },
+			paper_bgcolor: 'white',
+			plot_bgcolor: 'white',
+			font: { family: 'Arial', size: 12, color: '#506784' },
+			showlegend: true
+		};
+		const commonConfig = {
+			responsive: true,
+			displayModeBar: true,
+			displaylogo: false,
+			modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+			toImageButtonOptions: {
+				format: 'png',
+				filename: 'chart',
+				height: 500,
+				width: 700,
+				scale: 2
+			}
+		};
+
+		let currentGranularity = 'day';
+		
+		function updateTimelineChart(data) {
+			if (!data.timeline) return;
+
+			const timelineData = processTimelineData(data.timeline, currentGranularity);
+			
+			const trace = {
+				x: timelineData.dates,
+				y: timelineData.counts,
+				type: 'scatter',
+				mode: 'lines+markers',
+				line: { color: '#2ecc71', width: 2 },
+				marker: { color: '#27ae60', size: 8 }
+			};
+
+			const layout = {
+				...commonLayout,
+				title: { text: `Timeline (by ${currentGranularity})`, font: { size: 16 } },
+				xaxis: { 
+					title: 'Date',
+					tickangle: -45,
+					automargin: true
+				},
+				yaxis: { 
+					title: 'Count',
+					rangemode: 'tozero'
+				},
+				showlegend: false
+			};
+
+			Plotly.newPlot('timelineChart', [trace], layout, commonConfig);
+		}
+
+		function processTimelineData(timeline, granularity) {
+			const dateMap = new Map();
+
+			timeline.dates.forEach((date, index) => {
+				let key = date;
+				if (granularity === 'month') {
+					key = date.substring(0, 7); // YYYY-MM
+				} else if (granularity === 'quarter') {
+					const month = parseInt(date.substring(5, 7));
+					const quarter = Math.ceil(month / 3);
+					key = `${date.substring(0, 4)}-Q${quarter}`;
+				} else if (granularity === 'year') {
+					key = date.substring(0, 4); // YYYY
+				}
+
+				dateMap.set(key, (dateMap.get(key) || 0) + timeline.counts[index]);
+			});
+
+			const sortedDates = Array.from(dateMap.keys()).sort();
+			return {
+				dates: sortedDates,
+				counts: sortedDates.map(date => dateMap.get(date))
+			};
+		}
+
 		let currentFilters = {
 			module: [],
 			file_name: [],
@@ -1026,14 +1130,7 @@
 					}
 				};
 
-				const commonLayout = {
-					height: 400,
-					margin: { t: 50, b: 50, l: 50, r: 50 },
-					paper_bgcolor: 'white',
-					plot_bgcolor: 'white',
-					font: { family: 'Arial', size: 12, color: '#506784' },
-					showlegend: true
-				};
+				
 
 				// Update charts with individual error handling
 				const updatePromises = [
@@ -1240,29 +1337,10 @@
 
 				if (data.timeline) {
 					updatePromises.push(
-						updateSingleChart('timelineChart', () => Plotly.newPlot('timelineChart', [{
-							x: data.timeline.dates,
-							y: data.timeline.counts,
-							type: 'scatter',
-							mode: 'lines+markers',
-							line: { color: '#2ecc71', width: 2 },
-							marker: { color: '#27ae60', size: 8 }
-						}], {
-							...commonLayout,
-							title: { text: 'Timeline', font: { size: 16 } },
-							xaxis: { 
-								title: 'Date',
-								tickangle: -45,
-								automargin: true
-							},
-							yaxis: { 
-								title: 'Count',
-								rangemode: 'tozero'
-							},
-							showlegend: false
-						}, commonConfig))
+						updateSingleChart('timelineChart', () => updateTimelineChart(data))
 					);
 				}
+
 
 
 				await Promise.allSettled(updatePromises);
@@ -1312,6 +1390,21 @@
 
 			loadFilterOptions();
 			updateCharts();
+
+			// Add handler for granularity buttons
+			$('.btn-group [data-granularity]').click(function() {
+				$('.btn-group [data-granularity]').removeClass('active');
+				$(this).addClass('active');
+				currentGranularity = $(this).data('granularity');
+				
+				// Get the cached data or fetch new data
+				const cachedData = getCachedData(currentFilters);
+				if (cachedData) {
+					updateTimelineChart(cachedData);
+				} else {
+					updateCharts();
+				}
+			});
 
 			$('.select2').on('change', function() {
 				const filterId = this.id.replace('Filter', '');

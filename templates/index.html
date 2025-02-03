@@ -220,6 +220,7 @@
 							</label>
 						</div>
 						<button id="checkStatus" class="btn btn-primary me-2">Check Status</button>
+						<button id="checkValidParts" class="btn btn-warning me-2">Check Valid Parts</button>
 						<button id="downloadResults" class="btn btn-success">Download Results</button>
 					</div>
 				</div>
@@ -554,6 +555,36 @@
 			}
 		});
 
+		// Check Valid Parts Handler
+		document.getElementById('checkValidParts').addEventListener('click', async () => {
+			const selectedFiles = Array.from(document.querySelectorAll('.file-checkbox:checked')).map(cb => cb.value);
+
+			try {
+				showLoading();
+				const response = await fetch('/check-valid-parts', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json'
+					},
+					body: JSON.stringify({
+						files: selectedFiles
+					})
+				});
+				const result = await response.json();
+				
+				if (response.ok) {
+					const stats = result.data;
+					const message = `Validation completed: ${stats.valid_parts} valid parts, ${stats.invalid_parts} invalid parts out of ${stats.total_parts} total parts`;
+					showNotification(message);
+				} else {
+					showNotification(result.error, 'danger');
+				}
+			} catch (error) {
+				showNotification('Error checking valid parts', 'danger');
+			} finally {
+				hideLoading();
+			}
+		});
 
 	</script>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/js/all.min.js"></script>

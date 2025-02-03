@@ -58,6 +58,10 @@ def get_status_statistics(df):
     status_stats = df['status'].value_counts().to_dict()
     return status_stats
 
+def check_valid_file(files_list=None, ignore_date=True):
+    """Check if parts in files are valid"""
+    Get_status(files_list , ignore_date)
+
 def Get_status(files_list=None, ignore_date=True, daily_export=False):
     engine = create_db_engine()
     try:
@@ -247,7 +251,7 @@ def Get_status(files_list=None, ignore_date=True, daily_export=False):
         print("found parts begin")
         Found_parts_Status(engine=engine, files_string=files_string)
         print("found parts done")
-        
+        return files_string , daily_export
         return Download_results(files_string, daily_export)
 
     except Exception as e:
@@ -488,4 +492,6 @@ def Download_results(files_list = None, daily_export=False):
         engine.dispose()
 
 if __name__=="__main__":
-    Get_status(ignore_date = False,daily_export=True)
+    files_string , daily_export = Get_status(ignore_date = False,daily_export=True)
+    df, file_name = Download_results(files_string, daily_export)
+    

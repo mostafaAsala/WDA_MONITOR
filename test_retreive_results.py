@@ -82,7 +82,8 @@ def get_status():
             else:
                 messagebox.showwarning(f"Warning", f"Calculating status for files[{selected_files}], ignoring updated")
             
-        status = Get_status(selected_files,ignore_date)
+        files_string, daily_export = Get_status(selected_files,ignore_date)
+        status,file_name = Download_results(files_string, daily_export)
         # Display status in a pop-up or update a label
         status_label.config(text=f"Status: {status}")
         messagebox.showinfo("Status", f"System Status:\n{status}")

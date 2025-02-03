@@ -152,8 +152,8 @@ def check_status():
         app.logger.info(f'Checking status for files: {selected_files}')
         
         with status_lock:  # Ensure only one status check at a time
-            df, file_name = Get_status(selected_files, ignore_date)
-            
+            files_string, daily_export = Get_status(selected_files, ignore_date)
+            df, file_name  = Download_results(files_string, daily_export)
             # Use file lock when writing results
             with file_lock:
                 status_stats = get_status_statistics(df)
@@ -168,6 +168,28 @@ def check_status():
             return return_object
     except Exception as e:
         app.logger.error(f'Error checking status: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/check-valid-parts', methods=['POST'])
+def check_valid_parts():
+    selected_files = request.json.get('files', [])
+    
+    try:
+        app.logger.info(f'Checking valid parts for files: {selected_files}')
+        
+        with status_lock:  # Ensure only one check at a time
+            from check_status import check_valid_file
+            result = check_valid_file(selected_files)
+            
+            app.logger.info('Valid parts check completed successfully')
+            return jsonify({
+                'status': 'Success', 
+                'message': 'Valid parts check completed successfully',
+                'data': result
+            })
+            
+    except Exception as e:
+        app.logger.error(f'Error checking valid parts: {str(e)}')
         return jsonify({'error': str(e)}), 500
 
 @app.route('/refresh-files', methods=['GET'])
