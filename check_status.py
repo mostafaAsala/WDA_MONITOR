@@ -60,7 +60,9 @@ def get_status_statistics(df):
 
 def check_valid_file(files_list=None, ignore_date=True):
     """Check if parts in files are valid"""
-    Get_status(files_list , ignore_date)
+    files_string , daily_export = Get_status(files_list , ignore_date)
+    df = fetch_results_from_database(files_string , daily_export)
+    
 
 def Get_status(files_list=None, ignore_date=True, daily_export=False):
     engine = create_db_engine()
@@ -252,7 +254,7 @@ def Get_status(files_list=None, ignore_date=True, daily_export=False):
         Found_parts_Status(engine=engine, files_string=files_string)
         print("found parts done")
         return files_string , daily_export
-        return Download_results(files_string, daily_export)
+        #return Download_results(files_string, daily_export)
 
     except Exception as e:
         print(f"Error in Get_status: {str(e)}")
@@ -446,6 +448,31 @@ def Found_parts_Status(engine, files_string):
         print(traceback.format_exc())
         raise
 
+def fetch_results_from_database(files_list = None, daily_export=False):
+    print("fetching_result...")
+    engine = create_db_engine()
+    
+    try:
+        if files_list is None:
+            result_query = text("select x.* , y.file_name from parts x join uploaded_files y on x.file_id = y.id ")
+        else:
+            files_string = files_list if isinstance(files_list, str) else str(tuple(files_list))
+            if isinstance(files_list, list) and len(files_list)==1:
+                files_string = files_string[0:-2]+')'
+        
+            result_query = text(f"""select x.* , y.file_name from parts x join uploaded_files y on x.file_id = y.id where y.file_name in {files_string}""")
+        
+        with engine.connect() as connection:
+            result = connection.execute(result_query)
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+        
+        print("fetching finished Exporting files...")
+        df['last_run_date'] = pd.to_datetime(df['last_run_date'], errors='coerce')
+        df['is_expired'] = (df['last_run_date'].isna()) | (df['last_run_date'] < datetime.now() - timedelta(days=Config.Date_to_expire))
+        
+        return df
+    finally:
+        engine.dispose()
 
 
 def Download_results(files_list = None, daily_export=False):
