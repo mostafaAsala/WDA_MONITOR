@@ -10,6 +10,18 @@ import tempfile
 import shutil
 import filelock
 
+# Create a file lock for results.csv
+results_lock = filelock.FileLock(os.path.join(Config.result_path, "results.csv.lock"))
+# Update Oracle Client initialization
+try:
+    instant_client_path = os.path.abspath(Config.INSTANT_CLIENT)
+    os.environ["PATH"] = instant_client_path + os.pathsep + os.environ["PATH"]
+    os.environ["ORACLE_HOME"] = instant_client_path
+    oracledb.init_oracle_client(lib_dir=instant_client_path)
+except Exception as e:
+    print(f"Error initializing Oracle Client: {e}")
+    raise
+
 # Database configuration with connection pooling
 def create_db_engine():
     return create_engine(
@@ -21,8 +33,22 @@ def create_db_engine():
         pool_recycle=1800
     )
 
-# Create a file lock for results.csv
-results_lock = filelock.FileLock(os.path.join(Config.result_path, "results.csv.lock"))
+
+def get_files():
+    engine = create_db_engine()
+    try:
+        get_files_string =text( "select * from uploaded_files")
+        with engine.begin() as connection:
+            try:
+                print("in progress...")
+                data = connection.execute(get_files_string).fetchall()
+                print(data)
+            except:
+                pass
+        
+    except Exception as e:
+        print(e)
+    pass
 
 def safe_write_csv(df, filepath):
     """Thread-safe CSV writing with direct file access"""
@@ -43,15 +69,7 @@ def safe_write_csv(df, filepath):
 
 
 
-# Update Oracle Client initialization
-try:
-    instant_client_path = os.path.abspath(Config.INSTANT_CLIENT)
-    os.environ["PATH"] = instant_client_path + os.pathsep + os.environ["PATH"]
-    os.environ["ORACLE_HOME"] = instant_client_path
-    oracledb.init_oracle_client(lib_dir=instant_client_path)
-except Exception as e:
-    print(f"Error initializing Oracle Client: {e}")
-    raise
+
 def get_status_statistics(df):
     """Get status statistics from DataFrame"""
 
@@ -519,6 +537,8 @@ def Download_results(files_list = None, daily_export=False):
         engine.dispose()
 
 if __name__=="__main__":
+
+    
     files_string , daily_export = Get_status(ignore_date = False,daily_export=True)
     df, file_name = Download_results(files_string, daily_export)
     
