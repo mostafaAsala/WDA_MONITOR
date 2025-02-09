@@ -527,13 +527,13 @@ def fetch_results_from_database(files_list = None, daily_export=False):
     try:
         if files_list is None:
             status_logger.info("No files specified, fetching all results")
-            result_query = text("select x.* , y.file_name from parts x join uploaded_files y on x.file_id = y.id ")
+            result_query = text("select par.*, md.man_id, md.module_id, md.WDA_FLAG from (select x.* ,y.file_name , y.UPLOAD_DATE, y.LAST_CHECK_DATE, y.STOP_MONITOR_DATE from parts x join uploaded_files y on x.file_id = y.id  )par join updatesys.tbl_man_modules@new3_n md on par.module = md.module_name ")
         else:
             files_string = files_list if isinstance(files_list, str) else str(tuple(files_list))
             if isinstance(files_list, list) and len(files_list)==1:
                 files_string = files_string[0:-2]+')'
             status_logger.info(f"Fetching results for files: {files_string}")
-            result_query = text(f"""select x.* , y.file_name from parts x join uploaded_files y on x.file_id = y.id where y.file_name in {files_string}""")
+            result_query = text(f"""select par.*, md.man_id, md.module_id, md.WDA_FLAG from (select x.* ,y.file_name , y.UPLOAD_DATE, y.LAST_CHECK_DATE, y.STOP_MONITOR_DATE from parts x join uploaded_files y on x.file_id = y.id where y.file_name in {files_string} )par join updatesys.tbl_man_modules@new3_n md on par.module = md.module_name """)
         
         with engine.connect() as connection:
             status_logger.info("Executing database query")
@@ -562,13 +562,13 @@ def Download_results(files_list = None, daily_export=False):
     try:
         if files_list is None:
             status_logger.info("No files specified, downloading all results")
-            result_query = text("select x.* , y.file_name from parts x join uploaded_files y on x.file_id = y.id ")
+            result_query = text("select par.*, md.man_id, md.module_id, md.WDA_FLAG from (select x.* ,y.file_name, y.UPLOAD_DATE, y.LAST_CHECK_DATE, y.STOP_MONITOR_DATE from parts x join uploaded_files y on x.file_id = y.id )par join updatesys.tbl_man_modules@new3_n md on par.module = md.module_name ")
         else:
             files_string = files_list if isinstance(files_list, str) else str(tuple(files_list))
             if isinstance(files_list, list) and len(files_list)==1:
                 files_string = files_string[0:-2]+')'
             status_logger.info(f"Downloading results for files: {files_string}")
-            result_query = text(f"""select x.* , y.file_name from parts x join uploaded_files y on x.file_id = y.id where y.file_name in {files_string}""")
+            result_query = text(f"""select par.*, md.man_id, md.module_id, md.WDA_FLAG from (select x.*,y.file_name , y.UPLOAD_DATE, y.LAST_CHECK_DATE, y.STOP_MONITOR_DATE from parts x join uploaded_files y on x.file_id = y.id where y.file_name in {files_string} )par join updatesys.tbl_man_modules@new3_n md on par.module = md.module_name""")
         
         with engine.connect() as connection:
             status_logger.info("Executing database query")

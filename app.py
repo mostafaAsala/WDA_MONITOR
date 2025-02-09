@@ -80,6 +80,13 @@ os.environ["PATH"] = os.path.join(os.path.dirname(__file__), Config.INSTANT_CLIE
 global_df = None
 grouped_data = None
 
+
+def load_module_data():
+	#load data from matrix man- module- running status - comment - old
+	#load direct Feed suppliers 
+	#load man module table
+	pass
+
 def load_data():
 	global global_df
 	global grouped_data
@@ -90,17 +97,30 @@ def load_data():
 			'Error' if any(err in str(x) for err in ['Error', 'Exception', 'Incomplete']) else
 			x
 		)
+		
 		global_df['status'].fillna('-',inplace=True)
 		global_df['prty'].fillna('-',inplace=True)
 		global_df['table_name'].fillna('-',inplace=True)
 		
 		grouped_data = global_df.groupby(
     ['man', 'module', 'file_id', 'status', 'last_run_date', 
-     'table_name', 'prty', 'file_name', 'is_expired'], dropna=False
+     'table_name', 'prty', 'file_name', 'is_expired',], dropna=False
 		).size().reset_index(name='count')
 		# Rename the count column
 		grouped_data.rename(columns={'id': 'count'}, inplace=True)
 
+		grouped_data = global_df.groupby(
+			['man', 'module', 'file_id', 'status', 'last_run_date', 
+			'table_name', 'prty', 'file_name', 'is_expired'], dropna=False
+		).agg(
+			count=('part', 'size'),  # Count the number of rows
+			first_last_check_date=('last_check_date', 'first'),  # First value of last_check_date
+			first_stop_monitor_date=('stop_monitor_date', 'first'),  # First value of stop_monitor_date
+			first_man_id=('man_id', 'first'),  # First value of man_id
+			first_module_id=('module_id', 'first'),  # First value of module_id
+			first_wda_flag=('wda_flag', 'first')  # First value of wda_flag
+		).reset_index()
+		print(grouped_data)
 		print("Length of data: ",len(global_df), len(grouped_data), grouped_data['count'].sum())
 		return True
 	except Exception as e:
