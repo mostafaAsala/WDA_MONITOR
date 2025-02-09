@@ -20,6 +20,24 @@
 	<!-- Custom CSS Styles -->
 
 	<style>
+		.badge {
+			font-size: 0.85rem;
+			padding: 0.35em 0.65em;
+			font-weight: 500;
+		}
+		.badge.bg-danger {
+			background-color: #dc3545 !important;
+		}
+		.badge.bg-primary {
+			background-color: #0d6efd !important;
+		}
+		.badge.bg-secondary {
+			background-color: #6c757d !important;
+		}
+		.status-badge {
+			min-width: 90px;
+			text-align: center;
+		}
 		.file-list {
 			max-height: 400px;
 			overflow-y: auto;
@@ -238,6 +256,7 @@
 										<th>Upload Date</th>
 										<th>Last Check Date</th>
 										<th>Stop Monitor Date</th>
+										<th>Status</th>
 										<th>Actions</th>
 									</tr>
 								</thead>
@@ -265,6 +284,14 @@
 													data-filename="{{ file }}">
 												<button class="btn btn-outline-primary btn-sm update-stop-date" type="button">Update</button>
 											</div>
+										</td>
+										<td>
+											{% if db_file and db_file.stop_monitor_date and db_file.stop_monitor_date|string != 'NaT' 
+											and db_file.stop_monitor_date.date() < today %}
+												<span class="badge bg-danger">Expired</span>
+											{% else %}
+												<span class="badge bg-secondary status-badge" data-filename="{{ file }}">Idle</span>
+											{% endif %}
 										</td>
 										<td>
 											<button class="btn btn-danger btn-sm delete-btn" data-filename="{{ file }}">Delete</button>
@@ -312,6 +339,51 @@
 	</div>
 	<script>
 		let csvData = [];
+		
+		// Status polling function
+		function pollFileStatus() {
+			fetch('/get-file-status')
+				.then(response => response.json())
+				.then(statusData => {
+					// Update status badges
+					document.querySelectorAll('.status-badge').forEach(badge => {
+						const fileName = badge.dataset.filename;
+						if (statusData[fileName]) {
+							badge.className = `badge ${statusData[fileName] === 'In Progress' ? 'bg-primary' : 'bg-secondary'} status-badge`;
+							badge.textContent = statusData[fileName];
+						}
+					});
+				})
+				.catch(error => console.error('Error polling status:', error));
+		}
+
+		// Start polling when page loads
+		let statusPollInterval;
+		document.addEventListener('DOMContentLoaded', () => {
+			statusPollInterval = setInterval(pollFileStatus, 60000); // Poll every 2 seconds
+		});
+
+		// Cleanup on page unload
+		window.addEventListener('beforeunload', async (event) => {
+			// Clear polling interval
+			clearInterval(statusPollInterval);
+			
+			// Reset status for all files
+			const files = Array.from(document.querySelectorAll('.status-badge')).map(badge => badge.dataset.filename);
+			if (files.length > 0) {
+				try {
+					await fetch('/reset-file-status', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify({ files })
+					});
+				} catch (error) {
+					console.error('Error resetting file status:', error);
+				}
+			}
+		});
 
 		function showNotification(message, type = 'success') {
 			const notification = document.getElementById('notification');
@@ -360,12 +432,14 @@
 		document.addEventListener('DOMContentLoaded', () => {
 			if (checkLoginStatus()) {
 				document.querySelector('.container-fluid').style.display = 'block';
-				//loadCSVData();
+				// Start status polling
+				statusPollInterval = setInterval(pollFileStatus, 60000);
 			} else {
 				loginModal.show();
 			}
 		});
 
+		// Update login form handler to start polling after successful login
 		document.getElementById('loginForm').addEventListener('submit', (e) => {
 			e.preventDefault();
 			const username = document.getElementById('username').value;
@@ -377,7 +451,8 @@
 				}));
 				loginModal.hide();
 				document.querySelector('.container-fluid').style.display = 'block';
-				//loadCSVData();
+				// Start status polling after successful login
+				statusPollInterval = setInterval(pollFileStatus, 60000); // Poll every 2 seconds
 			} else {
 				document.getElementById('loginError').style.display = 'block';
 			}
@@ -467,20 +542,23 @@
 		document.getElementById('refreshList').addEventListener('click', async () => {
 			try {
 				showLoading();
-				const [filesResponse, dbFilesResponse] = await Promise.all([
+				const [filesResponse, dbFilesResponse, statusResponse] = await Promise.all([
 					fetch('/refresh-files'),
-					fetch('/get-db-files')
+					fetch('/get-db-files'),
+					fetch('/get-file-status')
 				]);
 				
 				const filesResult = await filesResponse.json();
 				const dbFilesResult = await dbFilesResponse.json();
+				const statusData = await statusResponse.json();
 				
 				if (filesResponse.ok && dbFilesResult.status === 'success') {
 					const fileList = document.getElementById('fileList');
 					fileList.innerHTML = '';
-					console.log(dbFilesResult)
+					
 					filesResult.files.forEach((file, index) => {
 						const dbFileInfo = dbFilesResult.files.find(dbFile => dbFile.file_name === file);
+						const currentStatus = statusData[file] || 'Idle';
 						const row = document.createElement('tr');
 						row.className = 'animate__animated animate__fadeIn';
 						row.innerHTML = `
@@ -491,8 +569,8 @@
 							<td>
 								<label class="form-check-label ${dbFileInfo && dbFileInfo.stop_monitor_date ? (new Date(dbFileInfo.stop_monitor_date) < new Date().setHours(0,0,0,0) ? 'expired-file' : '') : ''}" for="file-${index}">${file}</label>
 							</td>
-							<td>${dbFileInfo && dbFileInfo.upload_date ? new Date(dbFileInfo.upload_date).toLocaleDateString() : 'Not uploaded'}</td>
-							<td>${dbFileInfo && dbFileInfo.last_check_date ? new Date(dbFileInfo.last_check_date).toLocaleDateString() : 'Not checked'}</td>
+							<td>${dbFileInfo && dbFileInfo.upload_date ? new Date(dbFileInfo.upload_date).toLocaleDateString('en-CA') : 'Not uploaded'}</td>
+							<td>${dbFileInfo && dbFileInfo.last_check_date ? new Date(dbFileInfo.last_check_date).toLocaleDateString('en-CA') : 'Not checked'}</td>
 							<td>
 								<div class="input-group">
 									<input type="date" class="form-control form-control-sm stop-date-input" 
@@ -500,6 +578,11 @@
 										data-filename="${file}">
 									<button class="btn btn-outline-primary btn-sm update-stop-date" type="button">Update</button>
 								</div>
+							</td>
+							<td>
+								${dbFileInfo && dbFileInfo.stop_monitor_date && new Date(dbFileInfo.stop_monitor_date) < new Date().setHours(0,0,0,0) 
+									? '<span class="badge bg-danger">Expired</span>' 
+									: `<span class="badge ${currentStatus === 'In Progress' ? 'bg-primary' : 'bg-secondary'} status-badge" data-filename="${file}">${currentStatus}</span>`}
 							</td>
 							<td>
 								<button class="btn btn-danger btn-sm delete-btn" data-filename="${file}">Delete</button>
@@ -621,6 +704,11 @@
 			const selectedFiles = Array.from(document.querySelectorAll('.file-checkbox:checked')).map(cb => cb.value);
 			const ignoreDate = document.getElementById('ignoreDate').checked;
 
+			if (selectedFiles.length === 0) {
+				showNotification('Please select files to check', 'warning');
+				return;
+			}
+
 			try {
 				showLoading();
 				const response = await fetch('/status', {
@@ -637,9 +725,6 @@
 				
 				if (response.ok) {
 					showNotification('Status check completed successfully');
-					if (result.data) {
-						//loadCSVData();
-					}
 				} else {
 					showNotification(result.error, 'danger');
 				}
@@ -649,6 +734,7 @@
 				hideLoading();
 			}
 		});
+
 
 		// Download Results Handler
 		document.getElementById('downloadResults').addEventListener('click', async () => {

@@ -139,6 +139,31 @@ def create_app():
 
 app = create_app()
 
+# Global dictionary to track file processing status
+file_status = {}
+
+@app.route('/get-file-status', methods=['GET'])
+def get_file_status():
+	return jsonify(file_status)
+
+@app.route('/update-file-status', methods=['POST'])
+def update_file_status():
+	data = request.json
+	file_name = data.get('file_name')
+	status = data.get('status')
+	if file_name:
+		file_status[file_name] = status
+	return jsonify({'status': 'success'})
+
+@app.route('/reset-file-status', methods=['POST'])
+def reset_file_status():
+	data = request.json
+	files = data.get('files', [])
+	for file in files:
+		if file in file_status:
+			file_status[file] = 'Idle'
+	return jsonify({'status': 'success'})
+
 @app.route('/')
 def index():
 	app.logger.info('Accessing index page')
@@ -229,12 +254,20 @@ def check_status():
 	try:
 		app.logger.info(f'Checking status for files: {selected_files}')
 		
+		# Update status to In Progress
+		for file in selected_files:
+			file_status[file] = 'In Progress'
+		
 		with status_lock:  # Ensure only one status check at a time
 			files_string, daily_export = Get_status(selected_files, ignore_date)
 			df, file_name  = Download_results(files_string, daily_export)
 			# Use file lock when writing results
 			with file_lock:
 				status_stats = get_status_statistics(df)
+				
+			# Reset status to Idle
+			for file in selected_files:
+				file_status[file] = 'Idle'
 				
 			app.logger.info('Status check completed successfully')
 			return_object = jsonify({
@@ -245,6 +278,9 @@ def check_status():
 			
 			return return_object
 	except Exception as e:
+		# Reset status on error
+		for file in selected_files:
+			file_status[file] = 'Idle'
 		app.logger.error(f'Error checking status: {str(e)}')
 		return jsonify({'error': str(e)}), 500
 
@@ -275,10 +311,13 @@ def refresh_files():
 	try:
 		app.logger.info('Refreshing files list')
 		files = os.listdir(Config.WORK_FOLDER)
-		return jsonify({
+		
+		files_status = jsonify({
 			'status': 'Success',
 			'files': files
 		})
+		
+		return files_status
 	except Exception as e:
 		app.logger.error(f'Error refreshing files: {str(e)}')
 		return jsonify({'error': str(e)}), 500
@@ -520,7 +559,29 @@ def update_stop_date():
 		app.logger.error(f'Error updating stop monitor date: {str(e)}')
 		return jsonify({'error': str(e)}), 500
 
+@app.route('/get-db-files')
+def get_db_files():
+	try:
+		app.logger.info('Fetching files from database')
+		from check_status import get_files
+		files_df = get_files()
+		if files_df is not None:
+			# Convert datetime columns to string format
+			for col in ['upload_date', 'last_check_date', 'stop_monitor_date']:
+				if col in files_df.columns:
+					files_df[col] = files_df[col].astype(str)
+			return jsonify({
+				'status': 'success',
+				'files': files_df.to_dict('records')
+			})
+		else:
+			return jsonify({'status': 'error', 'message': 'No files found'}), 404
+	except Exception as e:
+		app.logger.error(f'Error fetching files from database: {str(e)}')
+		return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
 	app.run(host='0.0.0.0', port=5000, threaded=True)
+
 
 
