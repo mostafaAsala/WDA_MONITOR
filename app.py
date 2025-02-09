@@ -3,6 +3,7 @@ import logging
 import pandas as pd
 from logging.handlers import RotatingFileHandler
 from flask import Flask, render_template, request, jsonify, send_file, flash, redirect, url_for
+from sqlalchemy import text
 from werkzeug.utils import secure_filename
 from datetime import datetime
 from Parts_Upload import main_upload_parts, main_delete_file
@@ -142,7 +143,23 @@ app = create_app()
 def index():
 	app.logger.info('Accessing index page')
 	files = os.listdir(Config.WORK_FOLDER)
-	return render_template('index.html', files=files)
+	today = datetime.now().date()
+	
+	# Get database files info
+	try:
+		from check_status import get_files
+		db_files_df = get_files()
+		
+		print(db_files_df)
+		if db_files_df is not None:
+			db_files = db_files_df.to_dict('records')
+		else:
+			db_files = []
+	except Exception as e:
+		app.logger.error(f'Error getting database files: {str(e)}')
+		db_files = []
+	
+	return render_template('index.html', files=files, db_files=db_files, today=today)
 
 @app.route('/update-data', methods=['GET'])
 def update_data():
@@ -479,6 +496,29 @@ def download_filtered():
 		app.logger.error(f'Error downloading filtered results: {str(e)}')
 		return jsonify({'error': str(e)}), 500
 
+
+@app.route('/update-stop-date', methods=['POST'])
+def update_stop_date():
+	try:
+		app.logger.info('Updating stop monitor date')
+		file_name = request.json.get('file_name')
+		stop_date = request.json.get('stop_date')
+		
+		from check_status import create_db_engine
+		engine = create_db_engine()
+		
+		with engine.begin() as connection:
+			update_query = text("""
+				UPDATE uploaded_files 
+				SET stop_monitor_date = TO_DATE(:stop_date, 'YYYY-MM-DD')
+				WHERE file_name = :file_name
+			""")
+			connection.execute(update_query, {"stop_date": stop_date, "file_name": file_name})
+			
+		return jsonify({'status': 'success', 'message': 'Stop monitor date updated successfully'})
+	except Exception as e:
+		app.logger.error(f'Error updating stop monitor date: {str(e)}')
+		return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
 	app.run(host='0.0.0.0', port=5000, threaded=True)

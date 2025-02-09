@@ -20,6 +20,45 @@
 	<!-- Custom CSS Styles -->
 
 	<style>
+		.file-list {
+			max-height: 400px;
+			overflow-y: auto;
+			overflow-x: auto;
+		}
+		.table {
+			margin-bottom: 0;
+			white-space: nowrap;
+		}
+		.table th {
+			background-color: #f8f9fa;
+			border-bottom: 2px solid #dee2e6;
+			position: sticky;
+			top: 0;
+			z-index: 1;
+		}
+		.table td {
+			vertical-align: middle;
+		}
+		.table tr:hover {
+			background-color: rgba(0,0,0,.03);
+		}
+		.table td:nth-child(3) {
+			white-space: normal;
+			min-width: 200px;
+		}
+
+		.stop-date-input {
+			max-width: 250px;
+		}
+		.input-group .btn {
+			z-index: 0;
+		}
+
+		.expired-file {
+			text-decoration: line-through;
+			color: #6c757d;
+		}
+
 		.chart-loading {
 			position: absolute;
 			top: 0;
@@ -163,7 +202,7 @@
 		</div>
 		
 		<div class="row justify-content-center">
-			<div class="col-md-8">
+			<div class="col-md-10">
 				<!-- File Upload Section -->
 				<div class="card mb-4 animate__animated animate__fadeInUp">
 					<div class="card-header">Upload File</div>
@@ -190,21 +229,50 @@
 					</div>
 					<div class="card-body">
 						<div class="file-list">
-							<div class="list-group" id="fileList">
-								{% for file in files %}
-								<div class="list-group-item animate__animated animate__fadeIn">
-									<div class="form-check d-flex justify-content-between align-items-center">
-										<div>
+							<table class="table table-hover">
+								<thead>
+									<tr>
+										<th>Select</th>
+										<th>ID</th>
+										<th>File Name</th>
+										<th>Upload Date</th>
+										<th>Last Check Date</th>
+										<th>Stop Monitor Date</th>
+										<th>Actions</th>
+									</tr>
+								</thead>
+								<tbody id="fileList">
+									{% for file in files %}
+									<tr class="animate__animated animate__fadeIn">
+										<td>
 											<input class="form-check-input file-checkbox" type="checkbox" value="{{ file }}" id="file-{{ loop.index }}">
-											<label class="form-check-label" for="file-{{ loop.index }}">
-												{{ file }}
+										</td>
+										{% set db_file = db_files|selectattr("file_name", "equalto", file)|first|default(None) %}
+										<td>{{ db_file.id if db_file else '-' }}</td>
+										<td>
+											<label class="form-check-label 
+												{% if db_file and db_file.stop_monitor_date and db_file.stop_monitor_date|string != 'NaT' 
+												and db_file.stop_monitor_date.date() < today %} expired-file {% endif %}" 
+												for="file-{{ loop.index }}">{{ file }}
 											</label>
-										</div>
-										<button class="btn btn-danger btn-sm delete-btn" data-filename="{{ file }}">Delete</button>
-									</div>
-								</div>
-								{% endfor %}
-							</div>
+										</td>
+										<td>{{ db_file.upload_date.date()  if db_file and db_file.upload_date else 'Not uploaded' }}</td>
+										<td>{{ db_file.last_check_date.date()  if db_file and db_file.last_check_date else 'Not checked' }}</td>
+										<td>
+											<div class="input-group">
+												<input type="date" class="form-control form-control-sm stop-date-input" 
+													value="{{ db_file.stop_monitor_date.date()  if db_file and db_file.stop_monitor_date else '' }}"
+													data-filename="{{ file }}">
+												<button class="btn btn-outline-primary btn-sm update-stop-date" type="button">Update</button>
+											</div>
+										</td>
+										<td>
+											<button class="btn btn-danger btn-sm delete-btn" data-filename="{{ file }}">Delete</button>
+										</td>
+									</tr>
+									{% endfor %}
+								</tbody>
+							</table>
 						</div>
 					</div>
 				</div>
@@ -399,13 +467,78 @@
 		document.getElementById('refreshList').addEventListener('click', async () => {
 			try {
 				showLoading();
-				const response = await fetch('/refresh-files');
-				const result = await response.json();
+				const [filesResponse, dbFilesResponse] = await Promise.all([
+					fetch('/refresh-files'),
+					fetch('/get-db-files')
+				]);
 				
-				if (response.ok) {
-					location.reload();
+				const filesResult = await filesResponse.json();
+				const dbFilesResult = await dbFilesResponse.json();
+				
+				if (filesResponse.ok && dbFilesResult.status === 'success') {
+					const fileList = document.getElementById('fileList');
+					fileList.innerHTML = '';
+					console.log(dbFilesResult)
+					filesResult.files.forEach((file, index) => {
+						const dbFileInfo = dbFilesResult.files.find(dbFile => dbFile.file_name === file);
+						const row = document.createElement('tr');
+						row.className = 'animate__animated animate__fadeIn';
+						row.innerHTML = `
+							<td>
+								<input class="form-check-input file-checkbox" type="checkbox" value="${file}" id="file-${index}">
+							</td>
+							<td>${dbFileInfo ? dbFileInfo.id : '-'}</td>
+							<td>
+								<label class="form-check-label ${dbFileInfo && dbFileInfo.stop_monitor_date ? (new Date(dbFileInfo.stop_monitor_date) < new Date().setHours(0,0,0,0) ? 'expired-file' : '') : ''}" for="file-${index}">${file}</label>
+							</td>
+							<td>${dbFileInfo && dbFileInfo.upload_date ? new Date(dbFileInfo.upload_date).toLocaleDateString() : 'Not uploaded'}</td>
+							<td>${dbFileInfo && dbFileInfo.last_check_date ? new Date(dbFileInfo.last_check_date).toLocaleDateString() : 'Not checked'}</td>
+							<td>
+								<div class="input-group">
+									<input type="date" class="form-control form-control-sm stop-date-input" 
+										value="${dbFileInfo && dbFileInfo.stop_monitor_date ? dbFileInfo.stop_monitor_date.split('T')[0] : ''}"
+										data-filename="${file}">
+									<button class="btn btn-outline-primary btn-sm update-stop-date" type="button">Update</button>
+								</div>
+							</td>
+							<td>
+								<button class="btn btn-danger btn-sm delete-btn" data-filename="${file}">Delete</button>
+							</td>
+						`;
+						fileList.appendChild(row);
+					});
+
+					// Reattach delete button event listeners
+					document.querySelectorAll('.delete-btn').forEach(button => {
+						button.addEventListener('click', async () => {
+							const filename = button.dataset.filename;
+							if (confirm(`Delete ${filename}?`)) {
+								try {
+									showLoading();
+									const response = await fetch(`/delete/${filename}`, {
+										method: 'POST'
+									});
+									const result = await response.json();
+									
+									if (response.ok) {
+										button.closest('tr').classList.add('animate__fadeOutRight');
+										setTimeout(() => {
+											location.reload();
+										}, 500);
+										showNotification('File deleted successfully');
+									} else {
+										showNotification(result.error, 'danger');
+									}
+								} catch (error) {
+									showNotification('Error deleting file', 'danger');
+								} finally {
+									hideLoading();
+								}
+							}
+						});
+					});
 				} else {
-					showNotification(result.error, 'danger');
+					showNotification(filesResult.error || dbFilesResult.message, 'danger');
 				}
 			} catch (error) {
 				showNotification('Error refreshing files', 'danger');
@@ -466,7 +599,7 @@
 						const result = await response.json();
 						
 						if (response.ok) {
-							button.closest('.list-group-item').classList.add('animate__fadeOutRight');
+							button.closest('tr').classList.add('animate__fadeOutRight');
 							setTimeout(() => {
 								location.reload();
 							}, 500);
@@ -583,6 +716,51 @@
 				showNotification('Error checking valid parts', 'danger');
 			} finally {
 				hideLoading();
+			}
+		});
+
+		// Stop Monitor Date Update Handler
+		document.addEventListener('click', (e) => {
+			if (e.target.classList.contains('update-stop-date')) {
+				const dateInput = e.target.previousElementSibling;
+				const fileName = dateInput.dataset.filename;
+				const stopDate = dateInput.value;
+
+				if (!stopDate) {
+					showNotification('Please select a date', 'warning');
+					return;
+				}
+
+				try {
+					showLoading();
+					fetch('/update-stop-date', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify({
+							file_name: fileName,
+							stop_date: stopDate
+						})
+					})
+					.then(response => response.json())
+					.then(result => {
+						if (result.status === 'success') {
+							showNotification('Stop monitor date updated successfully');
+						} else {
+							showNotification(result.error, 'danger');
+						}
+					})
+					.catch(error => {
+						showNotification('Error updating stop monitor date', 'danger');
+					})
+					.finally(() => {
+						hideLoading();
+					});
+				} catch (error) {
+					hideLoading();
+					showNotification('Error updating stop monitor date', 'danger');
+				}
 			}
 		});
 
