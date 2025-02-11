@@ -114,11 +114,12 @@ def load_data():
 			'table_name', 'prty', 'file_name', 'is_expired'], dropna=False
 		).agg(
 			count=('part', 'size'),  # Count the number of rows
-			first_last_check_date=('last_check_date', 'first'),  # First value of last_check_date
-			first_stop_monitor_date=('stop_monitor_date', 'first'),  # First value of stop_monitor_date
-			first_man_id=('man_id', 'first'),  # First value of man_id
-			first_module_id=('module_id', 'first'),  # First value of module_id
-			first_wda_flag=('wda_flag', 'first')  # First value of wda_flag
+			last_check_date=('last_check_date', 'first'),  # First value of last_check_date
+			upload_date = ('upload_date','first'),
+			stop_monitor_date=('stop_monitor_date', 'first'),  # First value of stop_monitor_date
+			man_id=('man_id', 'first'),  # First value of man_id
+			module_id=('module_id', 'first'),  # First value of module_id
+			wda_flag=('wda_flag', 'first')  # First value of wda_flag
 		).reset_index()
 		print(grouped_data)
 		print("Length of data: ",len(global_df), len(grouped_data), grouped_data['count'].sum())
@@ -459,7 +460,18 @@ def get_chart_data():
 			error_count = module_df[module_df['status'].isin(['Error', 'Proxy'])]['count'].sum()
 			found_count = module_df[module_df['status'] == 'found']['count'].sum()
 			expired_count = module_df[module_df['is_expired'] == True]['count'].sum()
+			WDA_Flag = module_df['wda_flag'].iloc[0]
+			number_to_string = {
+				0: "Stopped",
+				1: "Regular Running",
+				2: "Run By Request",
+				3: "schedule Running",
+				4: 'schedule Running'
+				# Add more mappings as needed
+			}
+			running_status = number_to_string[int(module_df['wda_flag'].iloc[0])]
 			
+			#.map({0:'Stopped', 1:'Regular Running',2:'Run By Request',3:'schedule Running'})
 			# Calculate last 3 days statistics
 			recent_df = module_df[module_df['last_run_date'] >= three_days_ago]
 			recent_count = recent_df['count'].sum()
@@ -467,6 +479,7 @@ def get_chart_data():
 			
 			module_stats.append({
 				'module': module,
+				'Running_Status': running_status,
 				'total_count': int(total_count),
 				'error_count': int(error_count),
 				'error_percentage': round((error_count / total_count) * 100, 2) if total_count > 0 else 0,
@@ -480,9 +493,34 @@ def get_chart_data():
 
 		# Sort by total count descending
 		module_stats.sort(key=lambda x: x['total_count'], reverse=True)
+
+
+		# Calculate file statistics
+		file_stats = []
+		for file_name in df['file_name'].unique():
+			file_df = df[df['file_name'] == file_name]
+			total_count = file_df['count'].sum()
+			error_count = file_df[file_df['status'].isin(['Error', 'Proxy'])]['count'].sum()
+			found_count = file_df[file_df['status'] == 'found']['count'].sum()
+			Done_parts = df[file_df['last_run_date']>=file_df['upload_date']]['count'].sum()
+			file_stats.append({
+				'file': file_name,
+				'total_count': int(total_count),
+				'error_count': int(error_count),
+				'error_percentage': round((error_count / total_count) * 100, 2) if total_count > 0 else 0,
+				'found_count': int(found_count),
+				'found_percentage': round((found_count / total_count) * 100, 2) if total_count > 0 else 0,
+				'done_percentage': round((Done_parts / total_count) * 100, 2) if total_count > 0 else 0
+			})
+
+		# Sort by total count descending
+		file_stats.sort(key=lambda x: x['total_count'], reverse=True)
+		
+
 		return_data = jsonify({
 			'stats': stats,
 			'tableData': module_stats,
+    		'fileStats': file_stats,  # Add this line
 			'status': {
 				'labels': status_counts.index.tolist(),
 				'values': [int(x) for x in status_counts.values.tolist()]

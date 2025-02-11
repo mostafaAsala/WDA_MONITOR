@@ -743,6 +743,44 @@
 
 		<!-- Charts Section -->
 		<div class="row">
+			<div class="row mt-4">
+				<div class="col-12">
+					<div class="data-table-wrapper">
+						<h4 class="chart-title">File Statistics</h4>
+						<div class="table-legend">
+							<div class="legend-item">
+								<div class="legend-color good"></div>
+								<span>Good (≥75% for success metrics, <25% for error metrics)</span>
+							</div>
+							<div class="legend-item">
+								<div class="legend-color warning"></div>
+								<span>Warning (50-75% for success, 25-50% for error)</span>
+							</div>
+							<div class="legend-item">
+								<div class="legend-color critical"></div>
+								<span>Critical (<50% for success, >50% for error)</span>
+							</div>
+						</div>
+						<div class="data-table-container">
+							<table class="data-table" id="fileTable">
+								<thead>
+									<tr>
+										<th data-sort="file">File Name <span class="sort-icon">↕</span></th>
+										<th data-sort="total_count">Total Count <span class="sort-icon">↕</span></th>
+										<th data-sort="error_count">Error Count <span class="sort-icon">↕</span></th>
+										<th data-sort="error_percentage">Error % (Lower Better) <span class="sort-icon">↕</span></th>
+										<th data-sort="found_count">Found Count <span class="sort-icon">↕</span></th>
+										<th data-sort="found_percentage">Found % (Higher Better) <span class="sort-icon">↕</span></th>
+										<th data-sort="done_percentage">Done % (Higher Better) <span class="sort-icon">↕</span></th>
+									</tr>
+								</thead>
+								<tbody id="fileTableBody">
+								</tbody>
+							</table>
+						</div>
+					</div>
+				</div>
+			</div>
 			<!-- Status Distribution Chart -->
 			<div class="col-md-4 chart-container">
 				<h4 class="chart-title">Status Distribution</h4>
@@ -844,6 +882,7 @@
 							<thead>
 								<tr>
 									<th data-sort="module">Module <span class="sort-icon">↕</span></th>
+									<th data-sort="Running_Status">Running Status <span class="sort-icon">↕</span></th>
 									<th data-sort="total_count">Total Count <span class="sort-icon">↕</span></th>
 									<th data-sort="error_count">Error Count <span class="sort-icon">↕</span></th>
 									<th data-sort="error_percentage">Error % (Lower Better) <span class="sort-icon">↕</span></th>
@@ -861,8 +900,12 @@
 					</div>
 				</div>
 			</div>
+		
+		
 		</div>
-		</div>
+		<!-- File Statistics Table -->
+
+	</div>
 		</div>
 	</div>
 	<script>
@@ -1122,6 +1165,7 @@
 					let handled_data ={}
 					// Check cache first
 					const cachedData = getCachedData(currentFilters);
+					
 					if (cachedData) {
 						console.log('Using cached data');
 						handled_data =  cachedData;
@@ -1244,7 +1288,9 @@
 						}];
 
 						updateDataTable(data);
-
+					
+						updateFileTable(data);
+					
 						// Create layout with fixed dimensions
 						/*const moduleLayout = {
 							...commonLayout,
@@ -1593,6 +1639,7 @@
 				const tr = document.createElement('tr');
 				tr.innerHTML = `
 					<td>${row.module || ''}</td>
+					<td>${row.Running_Status || ''}</td>
 					<td>${row.total_count || 0}</td>
 					<td>${row.error_count || 0}</td>
 					<td class="${errorClass}" style="--percentage-width: ${row.error_percentage || 0}%">${row.error_percentage || 0}%</td>
@@ -1652,6 +1699,98 @@
 				});
 			}
 		});
+
+
+
+		// File Table functionality
+let fileTableData = [];
+let currentFileSortColumn = '';
+let fileSortDirection = 'asc';
+
+function updateFileTable(data) {
+    if (!data || !data.fileStats) return;
+    fileTableData = data.fileStats;
+    renderFileTable();
+}
+
+function renderFileTable() {
+    const tbody = document.getElementById('fileTableBody');
+    tbody.innerHTML = '';
+    console.log("aaaaaaaaaaaaaaaa")
+    fileTableData.forEach(row => {
+        const errorClass = getPercentageClass(row.error_percentage || 0, true);
+        const foundClass = getPercentageClass(row.found_percentage || 0, false);
+        const DoneClass = getPercentageClass(row.done_percentage || 0, false);
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${row.file || ''}</td>
+            <td>${row.total_count || 0}</td>
+            <td>${row.error_count || 0}</td>
+            <td class="${errorClass}" style="--percentage-width: ${row.error_percentage || 0}%">${row.error_percentage || 0}%</td>
+            <td>${row.found_count || 0}</td>
+            <td class="${foundClass}" style="--percentage-width: ${row.found_percentage || 0}%">${row.found_percentage || 0}%</td>
+            <td class="${DoneClass}" style="--percentage-width: ${row.done_percentage || 0}%">${row.done_percentage || 0}%</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function sortFileTable(column) {
+    if (currentFileSortColumn === column) {
+        fileSortDirection = fileSortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentFileSortColumn = column;
+        fileSortDirection = 'asc';
+    }
+
+    fileTableData.sort((a, b) => {
+        let valueA = a[column] || 0;
+        let valueB = b[column] || 0;
+
+        // Handle numeric columns
+        if (column.includes('count') || column.includes('percentage')) {
+            valueA = parseFloat(valueA);
+            valueB = parseFloat(valueB);
+            return fileSortDirection === 'asc' ? valueA - valueB : valueB - valueA;
+        }
+
+        // Handle text columns (file)
+        if (fileSortDirection === 'asc') {
+            return valueA.toString().localeCompare(valueB.toString());
+        } else {
+            return valueB.toString().localeCompare(valueA.toString());
+        }
+    });
+
+    renderFileTable();
+}
+
+// Add event listeners for file table sorting
+document.addEventListener('DOMContentLoaded', function() {
+    const fileTable = document.getElementById('fileTable');
+    if (fileTable) {
+        fileTable.querySelector('thead').addEventListener('click', function(e) {
+            const th = e.target.closest('th');
+            if (th) {
+                const column = th.dataset.sort;
+                if (column) {
+                    sortFileTable(column);
+                }
+            }
+        });
+    }
+});
+
+// Update the updateCharts function to include file table update
+const existingUpdateCharts = updateCharts;
+updateCharts = async function() {
+    await existingUpdateCharts();
+    const data = getCachedData(currentFilters);
+    if (data) {
+        updateFileTable(data);
+    }
+};
 	</script>
 </body>
 </html>
