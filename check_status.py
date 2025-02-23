@@ -12,6 +12,32 @@ import tempfile
 import shutil
 import filelock
 
+import win32com.client as win32
+from tabulate import tabulate
+
+import winreg
+
+def set_redemption_registry():
+    """Ensure Redemption license agreement is suppressed via registry."""
+    try:
+        # Open or create the Redemption registry key
+        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"instance\Redemption")
+        # Set RDOAcceptMessages to 1 to suppress the license dialog
+        winreg.SetValueEx(key, "RDOAcceptMessages", 0, winreg.REG_DWORD, 1)
+        winreg.CloseKey(key)
+        print("Registry key set successfully. Redemption license dialog suppressed.")
+    except Exception as e:
+        print(f"Error setting Redemption registry key: {e}")
+
+# Call this function before initializing Redemption
+#set_redemption_registry()
+
+
+session = win32.Dispatch("Redemption.RDOSession")
+#session.RDOAcceptMessages = True
+    
+
+
 # Setup logging
 def setup_logger():
     logger = logging.getLogger('status_logger')
@@ -286,7 +312,10 @@ def Get_status(files_list=None, ignore_date=True, daily_export=False):
                     p.LAST_RUN_DATE = query_results.LAST_RUN_DATE,
                     p.TABLE_NAME = query_results.TABLE_NAME,
                     p."monitor features" = query_results."monitor features",
-                    p.prty = query_results.prty
+                    p.prty = query_results.prty,
+                    p.man_id = query_results.man_id,
+                    p.module_id = query_results.module_id
+                    
 
     """)
     
@@ -607,9 +636,190 @@ def Download_results(files_list = None, daily_export=False):
         engine.dispose()
         status_logger.info("Database connection disposed")
 
-if __name__=="__main__":
 
+def Get_file_stats(global_df):
+    # Calculate file statistics
+    global_df['status'] = global_df['status'].apply(lambda x: 
+			'Proxy' if '403' in str(x) else
+			'Error' if any(err in str(x) for err in ['Error', 'Exception', 'Incomplete']) else
+			x
+		)
+		
+    global_df['status'] = global_df['status'].fillna('-')
+    global_df['prty'] = global_df['prty'].fillna('-')
+    global_df['table_name'] = global_df['table_name'].fillna('-')
+    
+    df = global_df.groupby(
+        ['man', 'module', 'file_id', 'status', 'last_run_date', 
+        'table_name', 'prty', 'file_name', 'is_expired'], dropna=False
+    ).agg(
+        count=('part', 'size'),  # Count the number of rows
+        last_check_date=('last_check_date', 'first'),  # First value of last_check_date
+        upload_date = ('upload_date','first'),
+        stop_monitor_date=('stop_monitor_date', 'first'),  # First value of stop_monitor_date
+        man_id=('man_id', 'first'),  # First value of man_id
+        module_id=('module_id', 'first'),  # First value of module_id
+        wda_flag=('wda_flag', 'first')  # First value of wda_flag
+    ).reset_index()
+    file_stats = []
+    for file_name in df['file_name'].unique():
+        file_df = df[df['file_name'] == file_name]
+        total_count = file_df['count'].sum()
+        error_count = file_df[file_df['status'].isin(['Error','Exception', 'Proxy','Incomplete'])]['count'].sum()
+        notFound_count = file_df[file_df['status']== 'Not Found']['count'].sum()
+        found_count = file_df[file_df['status'] == 'found']['count'].sum()
+        Done_parts = file_df[file_df['last_run_date']>=file_df['upload_date']]['count'].sum()
+        error_Done_parts = file_df[(file_df['last_run_date']>=file_df['upload_date']) & file_df['status'].isin(['Error','Exception', 'Proxy','Incomplete'])]['count'].sum()
+        file_stats.append({
+            'file': file_name,
+            'total_count': int(total_count),
+            'error_count': int(error_count),
+            'NotFound_count': int(notFound_count),
+            'error_percentage': round((error_count / total_count) * 100, 2) if total_count > 0 else 0,
+            'found_count': int(found_count),
+            'found_percentage': round((found_count / total_count) * 100, 2) if total_count > 0 else 0,
+            'done_percentage': round((Done_parts / total_count) * 100, 2) if total_count > 0 else 0,
+            'Error_done_percentage': round((error_Done_parts / Done_parts) * 100, 2) if Done_parts > 0 else 0
+        })
+
+    # Sort by total count descending
+    file_stats.sort(key=lambda x: x['total_count'], reverse=True)
+    return file_stats
+
+
+
+# ... rest of the imports ...
+
+def send_status_email(file_stats):
+    """Send email with file processing statistics using Outlook"""
+    try:
+        # Create table from file_stats
+        headers = ['File', 'Total', 'Errors', 'Not Found', 'Error %', 'Found', 'Found %', 'Done %', 'Error Done %']
+        table_data = [[
+            stat['file'],
+            stat['total_count'],
+            stat['error_count'],
+            stat['NotFound_count'],
+            f"{stat['error_percentage']}%",
+            stat['found_count'],
+            f"{stat['found_percentage']}%",
+            f"{stat['done_percentage']}%",
+            f"{stat['Error_done_percentage']}%"
+        ] for stat in file_stats]
+        
+        table = tabulate(table_data, headers=headers, tablefmt='html')
+        # Helper function to determine color based on percentage
+        def get_color(percentage):
+            if percentage < 40:
+                return "red"
+            elif 40 <= percentage < 70:
+                return "orange"
+            else:
+                return "green"
+        # Create HTML content
+        # Create HTML content with improved styling
+        html_body = f"""
+            <html>
+                <head>
+                    <style>
+                        table {{
+                            width: 100%;
+                            border: 1px solid black;
+                            border-collapse: collapse;
+                            font-family: Arial, sans-serif;
+                        }}
+                        th {{
+                            background-color: #4CAF50;
+                            color: white;
+                            padding: 10px;
+                        }}
+                        td {{
+                            padding: 8px;
+                            text-align: center;
+                            border: 1px solid #ddd;
+                        }}
+                        tr:nth-child(even) {{ background-color: #f2f2f2; }}
+                        tr:hover {{ background-color: #ddd; }}
+                    </style>
+                </head>
+                <body>
+                    <h2 class="alert">⚠️ This is an automated email. ⚠️</h2>
+                    <h2>Daily Export Status Report</h2>
+                    <p>Report generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                    <table>
+                        <thead>
+                            <tr>
+                                {"".join(f"<th>{header}</th>" for header in headers)}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {"".join(
+                                f"<tr>"
+                                f"<td>{stat['file']}</td>"
+                                f"<td>{stat['total_count']}</td>"
+                                f"<td>{stat['error_count']}</td>"
+                                f"<td>{stat['NotFound_count']}</td>"
+                                f"<td style='color: {get_color(100-stat['error_percentage'])};'>{stat['error_percentage']}%</td>"
+                                f"<td>{stat['found_count']}</td>"
+                                f"<td style='color: {get_color(stat['found_percentage'])};'>{stat['found_percentage']}%</td>"
+                                f"<td style='color: {get_color(stat['done_percentage'])};'>{stat['done_percentage']}%</td>"
+                                f"<td style='color: {get_color(100-stat['Error_done_percentage'])};'>{stat['Error_done_percentage']}%</td>"
+                                f"</tr>"
+                                for stat in file_stats
+                            )}
+                        </tbody>
+                    </table>
+                </body>
+            </html>
+        """
+
+        
+
+        
+        # Initialize Outlook and Redemption
+        outlook = win32.Dispatch('Outlook.Application')
+        mail = outlook.CreateItem(0)  # 0 represents olMailItem
+
+        # Use Redemption to bypass restrictions
+        safe_mail = win32.Dispatch('Redemption.SafeMailItem')  # Redemption SafeMailItem
+        safe_mail.Item = mail  # Assign the Outlook mail item to Redemption
+
+        # Set email properties using Redemption
+        safe_mail.Subject = f"Daily Export Status Report - {datetime.now().strftime('%Y-%m-%d')}"
+        safe_mail.HTMLBody = html_body
+        recipients = Config.EMAIL_TO
+        for recipient in recipients:
+            mail.Recipients.Add(recipient)
+        # Send the email
+        safe_mail.Send()
+
+        status_logger.info("Status email sent successfully using Redemption")
+    except Exception as e:
+        status_logger.error(f"Error sending status email: {str(e)}")
+        status_logger.error(traceback.format_exc())
+        print("error", e)
+
+
+def daily_check_all():
     
     files_string , daily_export = Get_status(ignore_date = False,daily_export=True)
     df, file_name = Download_results(files_string, daily_export)
+    #df = pd.read_csv(r'results\results.csv')
+    if True:
+        file_stats = Get_file_stats(df)
+        #send_status_email(file_stats)
+
+def daily_check_all2():
     
+    files_string , daily_export = Get_status(ignore_date = False,daily_export=True)
+    df, file_name = Download_results(files_string, daily_export)
+    df = pd.read_csv(r'results\results.csv')
+    if True:
+        file_stats = Get_file_stats(df)
+        send_status_email(file_stats)
+if __name__=="__main__":
+
+    df = pd.read_csv(r'results\results.csv')
+    if True:
+        file_stats = Get_file_stats(df)
+        send_status_email(file_stats)

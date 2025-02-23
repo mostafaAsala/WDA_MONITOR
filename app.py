@@ -3,11 +3,12 @@ import logging
 import pandas as pd
 from logging.handlers import RotatingFileHandler
 from flask import Flask, render_template, request, jsonify, send_file, flash, redirect, url_for
+from flask_apscheduler import APScheduler
 from sqlalchemy import text
 from werkzeug.utils import secure_filename
 from datetime import datetime
 from Parts_Upload import main_upload_parts, main_delete_file
-from check_status import Get_status, Download_results, get_status_statistics
+from check_status import Get_status, Download_results, get_status_statistics, daily_check_all
 from config import Config
 import threading
 import filelock
@@ -121,6 +122,9 @@ def load_data():
 			module_id=('module_id', 'first'),  # First value of module_id
 			wda_flag=('wda_flag', 'first')  # First value of wda_flag
 		).reset_index()
+		
+		grouped_data['upload_date'] = pd.to_datetime(grouped_data['upload_date'])  
+		grouped_data['last_run_date'] = pd.to_datetime(grouped_data['last_run_date'])  
 		print(grouped_data)
 		print("Length of data: ",len(global_df), len(grouped_data), grouped_data['count'].sum())
 		return True
@@ -493,24 +497,26 @@ def get_chart_data():
 
 		# Sort by total count descending
 		module_stats.sort(key=lambda x: x['total_count'], reverse=True)
-
-
 		# Calculate file statistics
 		file_stats = []
 		for file_name in df['file_name'].unique():
 			file_df = df[df['file_name'] == file_name]
 			total_count = file_df['count'].sum()
-			error_count = file_df[file_df['status'].isin(['Error', 'Proxy'])]['count'].sum()
+			error_count = file_df[file_df['status'].isin(['Error','Exception', 'Proxy','Incomplete'])]['count'].sum()
+			notFound_count = file_df[file_df['status']== 'Not Found']['count'].sum()
 			found_count = file_df[file_df['status'] == 'found']['count'].sum()
-			Done_parts = df[file_df['last_run_date']>=file_df['upload_date']]['count'].sum()
+			Done_parts = file_df[file_df['last_run_date']>=(file_df['upload_date']- pd.Timedelta(days=1))]['count'].sum()
+			error_Done_parts = file_df[(file_df['last_run_date']>=file_df['upload_date']) & file_df['status'].isin(['Error','Exception', 'Proxy','Incomplete'])]['count'].sum()
 			file_stats.append({
 				'file': file_name,
 				'total_count': int(total_count),
 				'error_count': int(error_count),
+				'NotFound_count': int(notFound_count),
 				'error_percentage': round((error_count / total_count) * 100, 2) if total_count > 0 else 0,
 				'found_count': int(found_count),
 				'found_percentage': round((found_count / total_count) * 100, 2) if total_count > 0 else 0,
-				'done_percentage': round((Done_parts / total_count) * 100, 2) if total_count > 0 else 0
+				'done_percentage': round((Done_parts / total_count) * 100, 2) if total_count > 0 else 0,
+				'Error_done_percentage': round((error_Done_parts / Done_parts) * 100, 2) if Done_parts > 0 else 0
 			})
 
 		# Sort by total count descending
@@ -637,6 +643,45 @@ def get_db_files():
 	except Exception as e:
 		app.logger.error(f'Error fetching files from database: {str(e)}')
 		return jsonify({'error': str(e)}), 500
+
+
+
+
+def daily_task():
+	daily_check_all()
+# Config for APScheduler
+
+# 🔹 Define TaskConfig
+class TaskConfig:
+    SCHEDULER_API_ENABLED = True
+    
+    SCHEDULER_EXECUTORS = {
+        'default': {'type': 'threadpool', 'max_workers': 5}
+    }
+    SCHEDULER_JOB_DEFAULTS = {
+        'coalesce': True,  # Combine missed runs into one
+        'max_instances': 2,  # Allow at most 2 concurrent instances
+        'misfire_grace_time': 3600  # Allow 1-hour delay execution
+    }
+    JOBS = [
+        {
+            'id': 'daily_task',  # Unique Job ID
+            'func': 'app:daily_task',  # Function to run
+            'trigger': 'cron',
+            'hour': 1,
+            'minute': 0
+        }
+    ]
+
+
+
+# Add config to Flask app
+app.config.from_object(TaskConfig)
+
+# Initialize APScheduler
+scheduler = APScheduler()
+scheduler.init_app(app)
+scheduler.start()
 
 if __name__ == '__main__':
 	app.run(host='0.0.0.0', port=5000, threaded=True)
