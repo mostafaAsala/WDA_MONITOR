@@ -81,6 +81,7 @@ os.environ["PATH"] = os.path.join(os.path.dirname(__file__), Config.INSTANT_CLIE
 global_df = None
 grouped_data = None
 
+filtered_data = None
 
 def load_module_data():
 	#load data from matrix man- module- running status - comment - old
@@ -400,6 +401,7 @@ def get_filter_options():
 
 @app.route('/api/chart-data', methods=['GET','POST'])
 def get_chart_data():
+	global filtered_data
 	try:
 		app.logger.info('Fetching chart data')
 		if grouped_data is None:
@@ -432,7 +434,7 @@ def get_chart_data():
 			df['last_run_date'] = pd.to_datetime(df['last_run_date'])
 			df = df[(df['last_run_date'] >= filters['startDate']) & 
 				   (df['last_run_date'] <= filters['endDate'])]
-		
+		filtered_data = df
 		# Calculate statistics using count column and convert to native Python types
 		stats = {
 			'totalParts': int(df['count'].sum()),
@@ -644,7 +646,40 @@ def get_db_files():
 		app.logger.error(f'Error fetching files from database: {str(e)}')
 		return jsonify({'error': str(e)}), 500
 
+@app.route('/get_status_by_date', methods=['GET'])
+def get_status_by_date():
+    date = request.args.get('date')
+    granularity = request.args.get('grant', 'day')  # Default to 'day' if not provided
 
+    if not date:
+        return jsonify({'error': 'Date parameter is required'}), 400
+
+    try:
+        date = pd.to_datetime(date)  # Convert string to datetime
+    except Exception as e:
+        return jsonify({'error': 'Invalid date format'}), 400
+
+    print(f"Fetching status counts for date: {date}")
+
+    # Define date filtering based on granularity
+    if granularity == 'day':
+        filtered_df = filtered_data[filtered_data['last_run_date'].dt.date == date.date()]
+    elif granularity == 'month':
+        filtered_df = filtered_data[(filtered_data['last_run_date'] >= date) & (filtered_data['last_run_date'] < date + pd.DateOffset(months=1))]
+    elif granularity == 'quarter':
+        filtered_df = filtered_data[(filtered_data['last_run_date'] >= date) & (filtered_data['last_run_date'] < date + pd.DateOffset(months=3))]
+    elif granularity == 'year':
+        filtered_df = filtered_data[(filtered_data['last_run_date'] >= date) & (filtered_data['last_run_date'] < date + pd.DateOffset(years=1))]
+    else:
+        return jsonify({'error': 'Invalid granularity'}), 400
+
+    if filtered_df.empty:
+        return jsonify({"message": "No data found for this date"}), 404
+
+    # Count occurrences of each status
+    status_counts = filtered_df.groupby('status')['count'].sum().to_dict()
+    print(status_counts)
+    return jsonify({"date": date, "status_counts": status_counts})
 
 
 def daily_task():

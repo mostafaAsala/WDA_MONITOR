@@ -33,7 +33,7 @@ def set_redemption_registry():
 #set_redemption_registry()
 
 
-session = win32.Dispatch("Redemption.RDOSession")
+#session = win32.Dispatch("Redemption.RDOSession")
 #session.RDOAcceptMessages = True
     
 

@@ -856,6 +856,21 @@
 						</div>
 					</div>
 				</div>
+				<!-- Hidden Tooltip for Pie Chart -->
+				<div id="tooltip" style="
+					position: absolute;
+					display: none;
+					background: white;
+					border: 1px solid #ccc;
+					padding: 10px;
+					border-radius: 8px;
+					box-shadow: 2px 2px 10px rgba(0,0,0,0.2);
+					z-index: 1000;
+				">
+					<div id="distributionChart" style="width: 250px; height: 250px;"></div>
+				</div>
+
+
 			</div>
 		</div>
 		<!-- Data Table Section -->
@@ -933,7 +948,10 @@
 		};
 
 		let currentGranularity = 'day';
-		
+		let lastHoveredPoint = null;
+		let hoverTimeout = null;
+		let maxDistance = 250; // Max pixels away before hiding chart
+
 		function updateTimelineChart(data) {
 			if (!data.timeline) return;
 
@@ -962,8 +980,92 @@
 				},
 				showlegend: false
 			};
+			const chartDiv = document.getElementById('timelineChart');
+			const tooltip = document.getElementById('tooltip'); // Tooltip div
 
-			Plotly.newPlot('timelineChart', [trace], layout, commonConfig);
+			Plotly.newPlot(chartDiv, [trace], layout, commonConfig).then(function() {
+				
+				chartDiv.on('plotly_hover', function(eventData) {
+					if (!eventData.points.length) return;
+
+					let hoveredPoint = eventData.points[0]; // The point being hovered
+					let hoveredDate = hoveredPoint.x; // Extract date
+					
+					let chartContainer = chartDiv.getBoundingClientRect(); // Get chart's position on the page
+					// Convert data coordinates to screen coordinates
+					let xPixel =  100 +hoveredPoint.xaxis.l2p(new Date(hoveredPoint.x).getTime());
+					let yPixel = chartContainer.top + hoveredPoint.yaxis.l2p(hoveredPoint.y);
+					console.log(currentGranularity)
+					// Fetch data from Flask API
+					fetch(`/get_status_by_date?date=${hoveredDate}&grant=${currentGranularity}`)
+						.then(response => response.json())
+						.then(data => {
+							console.log(data.status_counts)
+							if (data.status_counts) {
+								let labels = Object.keys(data.status_counts);
+								let values = Object.values(data.status_counts);
+
+								// Define Pie Chart Data
+								let pieData = [{
+									labels: labels,
+									values: values,
+									type: 'pie',
+									hole: 0.4, // Donut style
+									marker: { colors: ['#2ecc71', '#e74c3c', '#f1c40f', '#3498db'] },
+									textinfo: 'label+percent', // Show labels and percentage on sectors
+    								insidetextorientation: 'radial' // Align text inside the sectors
+								}];
+
+								let pieLayout = {
+									title: `Status for ${hoveredDate}`,
+									height: 250,
+									width: 250,
+									margin: { t: 30, l: 10, r: 10, b: 10 },
+									showlegend: false
+								};
+
+								// Show and position tooltip
+								tooltip.style.display = "block";
+								tooltip.style.left = `${xPixel }px`;
+								tooltip.style.top = `${yPixel}px`;
+
+								// Update the floating pie chart
+								Plotly.react('distributionChart', pieData, pieLayout);
+							}
+						})
+						.catch(error => console.error("Error fetching data:", error));
+				});
+
+				// Unhover event to hide chart
+				chartDiv.on('plotly_unhover', function() {
+					hoverTimeout = setTimeout(() => {
+						if (!lastHoveredPoint) return;
+
+						let onMouseMove = (event) => {
+							let distX = Math.abs(event.clientX - (chartDiv.getBoundingClientRect().left + lastHoveredPoint.x));
+							let distY = Math.abs(event.clientY - (chartDiv.getBoundingClientRect().top + lastHoveredPoint.y));
+
+							// Hide chart if mouse moves too far
+							if (distX > maxDistance || distY > maxDistance) {
+								tooltip.style.display = "none";
+								document.removeEventListener('mousemove', onMouseMove);
+								lastHoveredPoint = null;
+							}
+						};
+
+						document.addEventListener('mousemove', onMouseMove);
+					}, 500); // Delay to prevent flickering
+				});
+
+				// Hide chart when leaving the chart area
+				chartDiv.addEventListener('mouseleave', () => {
+					tooltip.style.display = "none";
+					lastHoveredPoint = null;
+					try{
+						document.removeEventListener('mousemove', onMouseMove);
+					}catch{}
+				});
+			});
 		}
 
 		function processTimelineData(timeline, granularity) {
@@ -1442,6 +1544,10 @@
 				}, 200);
 			}
 		}
+
+
+
+
 
 		// Add cache clear function for the clear filters button
 		function clearCache() {

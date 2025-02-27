@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, Table, Column, String, Date, Integer, Meta
 import logging
 from config import Config
 from logging import Formatter
-
+import chardet
 from datetime import datetime
 import oracledb
 # Database configuration: Replace "your_database_url_here" with your actual database connection string
@@ -112,8 +112,14 @@ def extract_parts_from_file(file_path):
     parts = []
 
     try:
+        
+
+        with open(file_path, "rb") as f:
+            raw_data = f.read()
+            result = chardet.detect(raw_data)
+            print(result)  # {'encoding': 'utf-8', 'confidence': 0.99, 'language': ''}
         # Load CSV into a DataFrame
-        df = pd.read_csv(file_path,delimiter='\t')
+        df = pd.read_csv(file_path,delimiter='\t',encoding=result['encoding'])
         for column in required_columns:
             if column not in df.columns:
                 df[column]=None
