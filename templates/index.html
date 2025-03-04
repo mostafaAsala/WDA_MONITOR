@@ -66,7 +66,7 @@
 		}
 
 		.stop-date-input {
-			max-width: 250px;
+			max-width: 350px;
 		}
 		.input-group .btn {
 			z-index: 0;
@@ -155,6 +155,10 @@
 			right: 20px;
 			z-index: 1000;
 			display: none;
+		}
+		.btn:disabled {
+			cursor: not-allowed;
+			opacity: 0.6;
 		}
 	</style>
 
@@ -258,6 +262,8 @@
 										<th>Stop Monitor Date</th>
 										<th>Status</th>
 										<th>Actions</th>
+										<th>Upload to Amazon</th>
+
 									</tr>
 								</thead>
 								<tbody id="fileList">
@@ -296,6 +302,10 @@
 										<td>
 											<button class="btn btn-danger btn-sm delete-btn" data-filename="{{ file }}">Delete</button>
 										</td>
+										<td>
+											<button class="btn btn-primary btn-sm upload-amazon-btn" data-filename="{{ file }}">Upload to Amazon</button>
+										</td>
+
 									</tr>
 									{% endfor %}
 								</tbody>
@@ -459,18 +469,101 @@
 		});
 
 		// File operations event listeners
+
+		// Global variable to track Amazon upload status
+		let isAmazonUploading = false;
+
+		// Function to update Amazon upload button state across all instances
+		function updateAmazonButtonState(disabled) {
+			const amazonButtons = document.querySelectorAll('.upload-amazon-btn');
+			amazonButtons.forEach(btn => {
+				btn.disabled = disabled;
+				if (disabled) {
+					btn.innerHTML = '<i class="fas fa-sync fa-spin"></i> Uploading...';
+				} else {
+					btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Upload to Amazon';
+				}
+			});
+		}
+
+		document.addEventListener('click', async (e) => {
+			if (e.target.classList.contains('upload-amazon-btn') || 
+				(e.target.parentElement && e.target.parentElement.classList.contains('upload-amazon-btn'))) {
+				
+				if (isAmazonUploading) {
+					showNotification('Another file is currently being uploaded to Amazon. Please wait.', 'warning');
+					return;
+				}
+
+				const btn = e.target.classList.contains('upload-amazon-btn') ? e.target : e.target.parentElement;
+				const fileName = btn.dataset.filename;
+
+				try {
+					isAmazonUploading = true;
+					updateAmazonButtonState(true);
+					
+					const response = await fetch('/upload-to-amazon', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify({ file_name: fileName })
+					});
+
+					const data = await response.json();
+					
+					if (response.ok) {
+						showNotification(data.message || 'File uploaded to Amazon successfully', 'success');
+					} else {
+						throw new Error(data.error || 'Failed to upload file to Amazon');
+					}
+				} catch (error) {
+					showNotification(error.message, 'danger');
+				} finally {
+					isAmazonUploading = false;
+					updateAmazonButtonState(false);
+				}
+			}
+		});
+
+		// Upload to Amazon functionality
+		/*document.querySelectorAll('.upload-amazon-btn').forEach(button => {
+			button.addEventListener('click', async () => {
+				const filename = button.dataset.filename;
+				console.log(filename)
+				try {
+					showLoading();
+					const response = await fetch(`/upload-to-amazon`, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify({ file_name: filename })
+					});
+					const result = await response.json();
+					
+					if (response.ok) {
+						showNotification('File uploaded to Amazon successfully');
+					} else {
+						showNotification(result.error, 'danger');
+					}
+				} catch (error) {
+					showNotification('Error uploading file to Amazon', 'danger');
+				} finally {
+					hideLoading();
+				}
+			});
+		});*/
+
 		document.getElementById('uploadForm').addEventListener('submit', async (e) => {
 			e.preventDefault();
 			const formData = new FormData();
 			const fileInput = document.getElementById('fileInput');
 			const submitBtn = e.target.querySelector('button[type="submit"]');
-			const spinner = submitBtn.querySelector('.spinner-border');
-			
-			formData.append('file', fileInput.files[0]);
-			
+			submitBtn.disabled = true; // Disable the button during upload
 			try {
+				const spinner = submitBtn.querySelector('.spinner-border');
 				spinner.classList.remove('d-none');
-				submitBtn.disabled = true;
 				showLoading();
 
 				const response = await fetch('/upload', {
@@ -488,8 +581,9 @@
 			} catch (error) {
 				showNotification('Error uploading file', 'danger');
 			} finally {
+				submitBtn.disabled = false; // Re-enable the button after upload
+				const spinner = submitBtn.querySelector('.spinner-border');
 				spinner.classList.add('d-none');
-				submitBtn.disabled = false;
 				hideLoading();
 			}
 		});
@@ -506,7 +600,7 @@
 						const result = await response.json();
 						
 						if (response.ok) {
-							button.closest('.list-group-item').classList.add('animate__fadeOutRight');
+							button.closest('tr').classList.add('animate__fadeOutRight');
 							setTimeout(() => {
 								location.reload();
 							}, 500);
@@ -587,6 +681,9 @@
 							<td>
 								<button class="btn btn-danger btn-sm delete-btn" data-filename="${file}">Delete</button>
 							</td>
+							<td>
+								<button class="btn btn-primary btn-sm upload-amazon-btn" data-filename="${file}">Upload to Amazon</button>
+							</td>
 						`;
 						fileList.appendChild(row);
 					});
@@ -604,7 +701,7 @@
 									const result = await response.json();
 									
 									if (response.ok) {
-										button.closest('tr').classList.add('animate__fadeOutRight');
+										button.closest('.list-group-item').classList.add('animate__fadeOutRight');
 										setTimeout(() => {
 											location.reload();
 										}, 500);
@@ -639,13 +736,10 @@
 			const formData = new FormData();
 			const fileInput = document.getElementById('fileInput');
 			const submitBtn = e.target.querySelector('button[type="submit"]');
-			const spinner = submitBtn.querySelector('.spinner-border');
-			
-			formData.append('file', fileInput.files[0]);
-			
+			submitBtn.disabled = true; // Disable the button during upload
 			try {
+				const spinner = submitBtn.querySelector('.spinner-border');
 				spinner.classList.remove('d-none');
-				submitBtn.disabled = true;
 				showLoading();
 
 				const response = await fetch('/upload', {
@@ -663,13 +757,13 @@
 			} catch (error) {
 				showNotification('Error uploading file', 'danger');
 			} finally {
+				submitBtn.disabled = false; // Re-enable the button after upload
+				const spinner = submitBtn.querySelector('.spinner-border');
 				spinner.classList.add('d-none');
-				submitBtn.disabled = false;
 				hideLoading();
 			}
 		});
 
-		// Delete File Handler
 		document.querySelectorAll('.delete-btn').forEach(button => {
 			button.addEventListener('click', async () => {
 				const filename = button.dataset.filename;

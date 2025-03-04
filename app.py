@@ -15,6 +15,7 @@ import filelock
 import tempfile
 import traceback
 import time
+from AutomationProcesses.AmazonUpload import upload_file_to_amazon
 
 class SafeRotatingFileHandler(RotatingFileHandler):
 	def doRollover(self):
@@ -74,6 +75,8 @@ class SafeRotatingFileHandler(RotatingFileHandler):
 status_lock = threading.Lock()
 file_lock = filelock.FileLock(os.path.join(Config.result_path, "results.csv.lock"))
 df_lock = threading.Lock()
+amazon_upload_lock = threading.Lock()
+amazon_upload_in_progress = False
 print("Done importing...")
 # Add Oracle Client to PATH
 os.environ["PATH"] = os.path.join(os.path.dirname(__file__), Config.INSTANT_CLIENT) + ";" + os.environ["PATH"]
@@ -271,6 +274,31 @@ def delete_file(filename):
 	except Exception as e:
 		app.logger.error(f'Error deleting file {filename}: {str(e)}')
 		return jsonify({'error': str(e)}), 500
+
+
+@app.route('/upload-to-amazon', methods=['POST'])
+def upload_to_amazon():
+    global amazon_upload_in_progress
+    filename = request.json.get('file_name')
+    if not filename:
+        return jsonify({'error': 'Filename is required'}), 400
+    
+    # Check if another upload is in progress
+    if amazon_upload_in_progress:
+        return jsonify({'error': 'Another upload to Amazon is in progress. Please wait.'}), 429
+    
+    try:
+        with amazon_upload_lock:
+            amazon_upload_in_progress = True
+            file_path = os.path.join(Config.WORK_FOLDER, filename)
+            df = pd.read_csv(file_path, sep='\t')
+            upload_file_to_amazon(df)
+            return jsonify({'message': 'File uploaded to Amazon successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        amazon_upload_in_progress = False
+
 
 @app.route('/status', methods=['POST'])
 def check_status():
@@ -720,6 +748,3 @@ scheduler.start()
 
 if __name__ == '__main__':
 	app.run(host='0.0.0.0', port=5000, threaded=True)
-
-
-

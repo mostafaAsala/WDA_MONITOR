@@ -5,13 +5,23 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import Select
 import time
 import pyautogui
+from config import Config
+import os
 # Automatically download and use the latest Chrome WebDriver
-service = Service(ChromeDriverManager().install())
-driver = webdriver.Chrome(service=service)
 
 
+def upload_file_to_amazon(df):
+    print(df.columns)
+    df = df[['part','module']]
+    df.columns = ['Part','Module']
+    df['Prty'] = df['Part'].str.contains('http').map({True: 'P0', False: 'P1'})
+    file_path = os.path.join(Config.WORK_FOLDER,'AmazonUpload.xlsx')
 
-def main(file_path):
+    df.to_excel(file_path, index=False)
+    
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service)
+    
     # Open the web application
     driver.get("http://10.199.104.153:3100/news/importers")  # Replace with the actual URL
     try:
