@@ -497,7 +497,7 @@
 
 				const btn = e.target.classList.contains('upload-amazon-btn') ? e.target : e.target.parentElement;
 				const fileName = btn.dataset.filename;
-
+				console.log(fileName)
 				try {
 					isAmazonUploading = true;
 					updateAmazonButtonState(true);
@@ -507,6 +507,7 @@
 						headers: {
 							'Content-Type': 'application/json',
 						},
+						
 						body: JSON.stringify({ file_name: fileName })
 					});
 
@@ -560,6 +561,8 @@
 			const formData = new FormData();
 			const fileInput = document.getElementById('fileInput');
 			const submitBtn = e.target.querySelector('button[type="submit"]');
+			formData.append('file', fileInput.files[0]);
+			
 			submitBtn.disabled = true; // Disable the button during upload
 			try {
 				const spinner = submitBtn.querySelector('.spinner-border');
@@ -737,6 +740,8 @@
 			const fileInput = document.getElementById('fileInput');
 			const submitBtn = e.target.querySelector('button[type="submit"]');
 			submitBtn.disabled = true; // Disable the button during upload
+			formData.append('file', fileInput.files[0]);
+			
 			try {
 				const spinner = submitBtn.querySelector('.spinner-border');
 				spinner.classList.remove('d-none');

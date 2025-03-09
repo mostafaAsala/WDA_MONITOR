@@ -97,6 +97,7 @@ def get_files_from_folder(folder_path):
     try:
         files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
         file_scan_logger.info(f"Scanned folder '{folder_path}', found files: {files}")
+        files.remove('Data\\AmazonUpload.xlsx')
         return files
     except Exception as e:
         file_scan_logger.error(f"Error scanning folder '{folder_path}': {e}")
@@ -119,6 +120,8 @@ def extract_parts_from_file(file_path):
             result = chardet.detect(raw_data)
             print(result)  # {'encoding': 'utf-8', 'confidence': 0.99, 'language': ''}
         # Load CSV into a DataFrame
+        if result['encoding'] is None:
+            result['encoding'] = 'utf-8'
         df = pd.read_csv(file_path,delimiter='\t',encoding=result['encoding'])
         for column in required_columns:
             if column not in df.columns:
@@ -143,6 +146,8 @@ def is_file_uploaded(session, uploaded_files_table, file_name):
     """
     Check if a file is already uploaded.
     """
+    if file_name =='AmazonUpload.xlsx':
+        return False
     try:
         query = select(uploaded_files_table).where(uploaded_files_table.c.file_name == file_name)
         result = session.execute(query).fetchone()

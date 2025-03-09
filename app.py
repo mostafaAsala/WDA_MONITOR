@@ -12,7 +12,6 @@ from check_status import Get_status, Download_results, get_status_statistics, da
 from config import Config
 import threading
 import filelock
-import tempfile
 import traceback
 import time
 from AutomationProcesses.AmazonUpload import upload_file_to_amazon
@@ -238,6 +237,7 @@ def visualizations():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
+	print(request.files)
 	if 'file' not in request.files:
 		app.logger.error('No file part in request')
 		return jsonify({'error': 'No file part'}), 400
