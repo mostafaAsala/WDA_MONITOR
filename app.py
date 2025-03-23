@@ -1,20 +1,41 @@
 import os
+
+import numpy as np
+print("import os")
 import logging
+print("import logging")
 import pandas as pd
+print("import pandas as pd")
 from logging.handlers import RotatingFileHandler
+print("from logging.handlers import RotatingFileHandler")
 from flask import Flask, render_template, request, jsonify, send_file, flash, redirect, url_for
+print("from flask import Flask, render_template, request, jsonify, send_file, flash, redirect, url_for")
 from flask_apscheduler import APScheduler
+print("from flask_apscheduler import APScheduler")
 from sqlalchemy import text
+print("from sqlalchemy import text")
 from werkzeug.utils import secure_filename
+print("from werkzeug.utils import secure_filename")
 from datetime import datetime
+print("from datetime import datetime")
 from Parts_Upload import main_upload_parts, main_delete_file
+print("from Parts_Upload import main_upload_parts, main_delete_file")
 from check_status import Get_status, Download_results, get_status_statistics, daily_check_all
+print("from check_status import Get_status, Download_results, get_status_statistics, daily_check_all")
 from config import Config
+print("from config import Config")
 import threading
+print("import threading")
 import filelock
+print("import filelock")
 import traceback
+print("import traceback")
 import time
+print("import time")
 from AutomationProcesses.AmazonUpload import upload_file_to_amazon
+print("from AutomationProcesses.AmazonUpload import upload_file_to_amazon")
+from AutomationProcesses.download_matrix import download_matrix_toFile
+print("from AutomationProcesses.download_matrix import download_matrix_toFile")
 
 class SafeRotatingFileHandler(RotatingFileHandler):
 	def doRollover(self):
@@ -75,6 +96,7 @@ status_lock = threading.Lock()
 file_lock = filelock.FileLock(os.path.join(Config.result_path, "results.csv.lock"))
 df_lock = threading.Lock()
 amazon_upload_lock = threading.Lock()
+matrix_df = pd.read_csv(r'Static Data\matrix.csv')
 amazon_upload_in_progress = False
 print("Done importing...")
 # Add Oracle Client to PATH
@@ -503,7 +525,17 @@ def get_chart_data():
 				4: 'schedule Running'
 				# Add more mappings as needed
 			}
+			
 			running_status = number_to_string[int(module_df['wda_flag'].iloc[0])]
+			matrix_status = str(matrix_df[matrix_df['Modules'] == module]['Running Status'].iloc[0]).replace('"', '')
+			if  matrix_status == 'nan':
+				matrix_status = '-'
+			matrix_comment = str(matrix_df[matrix_df['Modules'] == module]['Module Comment'].iloc[0]).replace('"', '')
+			if  matrix_comment== 'nan':
+				matrix_comment = '-'
+			matrix_old = str(matrix_df[matrix_df['Modules'] == module]['old'].iloc[0]).replace('"', '')
+			if  matrix_old == 'nan':
+				matrix_old = '-'
 			
 			#.map({0:'Stopped', 1:'Regular Running',2:'Run By Request',3:'schedule Running'})
 			# Calculate last 3 days statistics
@@ -514,6 +546,9 @@ def get_chart_data():
 			module_stats.append({
 				'module': module,
 				'Running_Status': running_status,
+				'matrix_status': matrix_status,
+				'matrix_comment': matrix_comment,
+				'matrix_old': matrix_old,
 				'total_count': int(total_count),
 				'error_count': int(error_count),
 				'error_percentage': round((error_count / total_count) * 100, 2) if total_count > 0 else 0,
@@ -528,6 +563,7 @@ def get_chart_data():
 		# Sort by total count descending
 		module_stats.sort(key=lambda x: x['total_count'], reverse=True)
 		# Calculate file statistics
+		print("Calculating file statistics")
 		file_stats = []
 		for file_name in df['file_name'].unique():
 			file_df = df[df['file_name'] == file_name]
@@ -552,7 +588,7 @@ def get_chart_data():
 		# Sort by total count descending
 		file_stats.sort(key=lambda x: x['total_count'], reverse=True)
 		
-
+		
 		return_data = jsonify({
 			'stats': stats,
 			'tableData': module_stats,
@@ -579,6 +615,8 @@ def get_chart_data():
 			}
 		})
 		
+		print("Returning data")
+
 		return return_data
 	except Exception as e:
 		app.logger.error(f'Error fetching chart data: {str(e)}')
@@ -713,7 +751,10 @@ def get_status_by_date():
 def daily_task():
 	daily_check_all()
 # Config for APScheduler
-
+def download_matrix_task():
+	global matrix_df
+	download_matrix_toFile()
+	matrix_df = pd.read_csv(r'Static Data\matrix.csv')
 # 🔹 Define TaskConfig
 class TaskConfig:
     SCHEDULER_API_ENABLED = True
@@ -732,6 +773,13 @@ class TaskConfig:
             'func': 'app:daily_task',  # Function to run
             'trigger': 'cron',
             'hour': 1,
+            'minute': 0
+        },
+		{
+            'id': 'download_matrix_task',  # Unique Job ID
+            'func': 'app:download_matrix_task',  # Function to run
+            'trigger': 'cron',
+            'hour': 7,
             'minute': 0
         }
     ]

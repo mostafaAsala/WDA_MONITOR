@@ -28,5 +28,12 @@ class Config:
     tenent_id='0beb0c35-9cbb-4feb-99e5-589e415c7944'
     client_id='7eadcef8-456d-4611-9480-4fff72b8b9e2'
     access='https://myaccess.microsoft.com/?tenantId=0beb0c35-9cbb-4feb-99e5-589e415c7944&upn=Mostafa.Asal%40siliconexpert.com'
+
+    
+
+    #automate status process
+    daily_feed_url = r'https://d3ei71guzcqeu2.cloudfront.net/DailyExporterFeed/Priority%20System%20Results_Amazon%40{}.zip'
+    daily_feed_path = r'\\10.199.104.106\update_sys'
+    prty_feed_path = r'\\10.199.104.114\ShareName\UPDATE_SYS'
 # Ensure the upload folder exists
 os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)

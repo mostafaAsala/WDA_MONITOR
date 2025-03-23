@@ -9,14 +9,16 @@ from config import Config
 import os
 # Automatically download and use the latest Chrome WebDriver
 
-
 def upload_file_to_amazon(df):
     print(df.columns)
+    
+    df.columns = ['part', 'man', 'module'] 
     df = df[['part','module']]
     df.columns = ['Part','Module']
     df['Prty'] = df['Part'].str.contains('http').map({True: 'P0', False: 'P1'})
-    file_path = os.path.join(Config.WORK_FOLDER,'AmazonUpload.xlsx')
-
+    current_folder = os.getcwd()
+    file_path = os.path.join(current_folder, Config.WORK_FOLDER,'AmazonUpload.xlsx')
+    print("saving excel file")
     df.to_excel(file_path, index=False)
     
     service = Service(ChromeDriverManager().install())
@@ -25,6 +27,7 @@ def upload_file_to_amazon(df):
     # Open the web application
     driver.get("http://10.199.104.153:3100/news/importers")  # Replace with the actual URL
     try:
+        print("opening amazon upload page")
         driver.find_element(By.XPATH,'//input[@placeholder="Username"]').send_keys('WDA')
         time.sleep(1)
         driver.find_element(By.XPATH,'//input[@placeholder="Password"]').send_keys('admin')
@@ -35,32 +38,34 @@ def upload_file_to_amazon(df):
 
         driver.get("http://10.199.104.153:3100/news/importers")  # Replace with the actual URL
     except Exception as e:
-        print("not login")
-    # Select the process from the dropdown
-    time.sleep(2)  # Small delay to let the selection take effect
-    # Find the dropdown element by its ID
-    dropdown = Select(driver.find_element(By.ID, "select"))
+        print("not login", e)
+    try:    
+        # Select the process from the dropdown
+        time.sleep(2)  # Small delay to let the selection take effect
+        # Find the dropdown element by its ID
+        dropdown = Select(driver.find_element(By.ID, "select"))
 
-    dropdown.select_by_index(2)
-    time.sleep(1)
+        dropdown.select_by_index(2)
+        time.sleep(1)
 
+        print("uploading file")
+        # Locate the file input and upload a file
+        file_input = driver.find_element(By.XPATH, '//input[@id="exampleFile"]/parent::div')  # Using XPath
+        print(file_input.get_attribute('outerHTML'))
 
-    # Locate the file input and upload a file
-    file_input = driver.find_element(By.XPATH, '//input[@id="exampleFile"]/parent::div')  # Using XPath
-    print(file_input.get_attribute('outerHTML'))
+        file_input.click()
+        time.sleep(3)
+        pyautogui.typewrite(file_path,interval=0.1)  # Provide the absolute file path
+        time.sleep(1)
+        pyautogui.press("enter")  # Press Enter to select
+        time.sleep(1)
+        # Locate and click the upload button
+        upload_button = driver.find_element(By.XPATH, '//button[@type="button" and contains(.,"Import")]')  # Update with the actual button ID/class
+        upload_button.click()
 
-    file_input.click()
-    time.sleep(3)
-    pyautogui.typewrite(file_path,interval=0.1)  # Provide the absolute file path
-    time.sleep(1)
-    pyautogui.press("enter")  # Press Enter to select
-    time.sleep(1)
-    # Locate and click the upload button
-    upload_button = driver.find_element(By.XPATH, '//button[@type="button" and contains(.,"Import")]')  # Update with the actual button ID/class
-    upload_button.click()
-
-    # Wait for upload to complete
-    time.sleep(5)  # Adjust based on upload time
-
+        # Wait for upload to complete
+        time.sleep(50)  # Adjust based on upload time
+    except Exception as e:
+        print(e)
     # Close the browser
     driver.quit()

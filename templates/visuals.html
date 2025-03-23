@@ -898,6 +898,9 @@
 								<tr>
 									<th data-sort="module">Module <span class="sort-icon">↕</span></th>
 									<th data-sort="Running_Status">Running Status <span class="sort-icon">↕</span></th>
+									<th data-sort="matrix_status">Matrix Status <span class="sort-icon">↕</span></th>
+									<th data-sort="matrix_comment">Matrix comment <span class="sort-icon">↕</span></th>
+									<th data-sort="matrix_old">Matrix old <span class="sort-icon">↕</span></th>
 									<th data-sort="total_count">Total Count <span class="sort-icon">↕</span></th>
 									<th data-sort="error_count">Error Count <span class="sort-icon">↕</span></th>
 									<th data-sort="error_percentage">Error % (Lower Better) <span class="sort-icon">↕</span></th>
@@ -1273,26 +1276,30 @@
 						handled_data =  cachedData;
 
 					}else{
+						console.log('Fetching new data');
 						const response = await fetch('/api/chart-data', {
 							method: 'POST',
 							headers: { 'Content-Type': 'application/json' },
 							body: JSON.stringify(currentFilters)
 						});
-
+						console.log("fetching data success")
 						if (!response.ok) {
 							throw new Error(`Failed to fetch chart data: ${response.statusText}`);
 						}
-
+						console.log("response ok")
 						const data = await response.json();
+						
+						console.log("response ok")
 						if (!data || !data.stats || !data.status || !data.isExpired || !data.team || !data.table_name) {
 							throw new Error('Invalid data structure received from server');
 						}
 						// Cache the new data
+						console.log('Caching new data');
 						setCachedData(currentFilters, data);
 						handled_data = data;
 					}
 				
-
+				
 				const data = handled_data
 				
 				// Update stats
@@ -1735,7 +1742,7 @@
 		function renderTable() {
 			const tbody = document.getElementById('dataTableBody');
 			tbody.innerHTML = '';
-			
+			console.log("aaaaaaaaaaaaaaaasssssssssssssssssssssssssss")
 			tableData.forEach(row => {
 				const errorClass = getPercentageClass(row.error_percentage || 0, true);
 				const foundClass = getPercentageClass(row.found_percentage || 0, false);
@@ -1746,6 +1753,9 @@
 				tr.innerHTML = `
 					<td>${row.module || ''}</td>
 					<td>${row.Running_Status || ''}</td>
+					<td>${row.matrix_status || ''}</td>
+					<td>${row.matrix_comment || ''}</td>
+					<td>${row.matrix_old || ''}</td>
 					<td>${row.total_count || 0}</td>
 					<td>${row.error_count || 0}</td>
 					<td class="${errorClass}" style="--percentage-width: ${row.error_percentage || 0}%">${row.error_percentage || 0}%</td>

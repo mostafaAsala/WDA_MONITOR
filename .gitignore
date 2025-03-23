@@ -7,3 +7,5 @@ results/
 instantclient_23_6/
 *.log
 instance/
+automate_records/
+config.py
