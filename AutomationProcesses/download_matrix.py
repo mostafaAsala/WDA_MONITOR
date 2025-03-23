@@ -76,8 +76,9 @@ def download_matrix_toFile():
         df = pd.DataFrame(rows,columns=header)
         print(df)
         print("Download started...")
-
-        df.to_csv(r'Static Data\matrix.csv')
+        if not df.empty and len(df.columns) > 3:
+            df = df.dropna(axis=1, how='all')
+            df.to_csv(r'Static Data\matrix.csv')
 
         logger.info("Data saved to CSV file successfully")
 

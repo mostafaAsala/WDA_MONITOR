@@ -645,6 +645,15 @@
 				</div>
 
 				<div class="filter-wrapper mb-3">
+					<label class="form-label">Done Status</label>
+					<select class="form-select select2" id="doneFilter" multiple>
+						<option value="1">Done</option>
+						<option value="0">Not Done</option>
+					</select>
+					<span class="filter-count" id="doneCount"></span>
+				</div>
+
+				<div class="filter-wrapper mb-3">
 					<label class="form-label">Date Range</label>
 					<div class="input-group">
 						<input type="date" class="form-control" id="startDate">
@@ -1105,6 +1114,7 @@
 			is_expired: [],
 			table_name: [],
 			issue_modules: [],
+			done: [],      // Add this line
 			startDate: '',
 			endDate: ''
 		};
@@ -1179,7 +1189,8 @@
 					prty: $('#prtyFilter').val(),
 					table_name: $('#table_nameFilter').val(),
 					is_expired: $('#is_expiredFilter').val(),
-					issue_modules: $('#issue_modulesFilter').val()
+					issue_modules: $('#issue_modulesFilter').val(),
+					done: $('#doneFilter').val()
 				};
 
 				// Initialize select2 dropdowns while preserving selections
@@ -1206,6 +1217,7 @@
 				initSelect2('table_nameFilter', data.table_name, 'Select table name');
 				initSelect2('is_expiredFilter', ['true', 'false'], 'Select expiration status');
 				initSelect2('issue_modulesFilter', ['true', 'false'], 'Select issue status');
+				initSelect2('doneFilter', ['1', '0'], 'Select done status');
 
 				// Restore all selections and update filter counts
 				Object.entries(currentSelections).forEach(([key, value]) => {

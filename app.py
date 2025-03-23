@@ -118,19 +118,23 @@ def load_data():
 	global grouped_data
 	try:
 		global_df = pd.read_csv(os.path.join(Config.result_path, 'results.csv'))
+		global_df['status'] = global_df['status'].astype(str)
+		global_df['status'].fillna('-',inplace=True)
 		global_df['status'] = global_df['status'].apply(lambda x: 
-			'Proxy' if '403' in str(x) else
-			'Error' if any(err in str(x) for err in ['Error', 'Exception', 'Incomplete']) else
-			x
+			'found' if 'found' in str(x) else
+			'Not Found' if 'Not Found' in str(x) else
+			'WDA' if str(x) in ['Output Pattern not found','Link Step have no links','Error in loading page :404'] else
+			'Proxy' if 'Error' in str(x) or 'Incomplete' in str(x) else
+			'SW' if any(err in str(x) for err in [ 'Exception','java']) else
+			'not assigned'
 		)
 		
-		global_df['status'].fillna('-',inplace=True)
 		global_df['prty'].fillna('-',inplace=True)
 		global_df['table_name'].fillna('-',inplace=True)
 		
 		grouped_data = global_df.groupby(
     ['man', 'module', 'file_id', 'status', 'last_run_date', 
-     'table_name', 'prty', 'file_name', 'is_expired',], dropna=False
+     'table_name', 'prty', 'file_name', 'is_expired'], dropna=False
 		).size().reset_index(name='count')
 		# Rename the count column
 		grouped_data.rename(columns={'id': 'count'}, inplace=True)
@@ -147,9 +151,10 @@ def load_data():
 			module_id=('module_id', 'first'),  # First value of module_id
 			wda_flag=('wda_flag', 'first')  # First value of wda_flag
 		).reset_index()
-		
 		grouped_data['upload_date'] = pd.to_datetime(grouped_data['upload_date'])  
 		grouped_data['last_run_date'] = pd.to_datetime(grouped_data['last_run_date'])  
+		
+		grouped_data['done'] = grouped_data['last_run_date']>=(grouped_data['upload_date']- pd.Timedelta(days=1))
 		print(grouped_data)
 		print("Length of data: ",len(global_df), len(grouped_data), grouped_data['count'].sum())
 		return True
@@ -484,6 +489,8 @@ def get_chart_data():
 			df['last_run_date'] = pd.to_datetime(df['last_run_date'])
 			df = df[(df['last_run_date'] >= filters['startDate']) & 
 				   (df['last_run_date'] <= filters['endDate'])]
+		if filters.get('done'):
+			df = df[df['done'].isin([int(x) for x in filters['done']])]
 		filtered_data = df
 		# Calculate statistics using count column and convert to native Python types
 		stats = {
@@ -796,3 +803,6 @@ scheduler.start()
 
 if __name__ == '__main__':
 	app.run(host='0.0.0.0', port=5000, threaded=True)
+
+
+
