@@ -16,7 +16,7 @@ from sqlalchemy import text
 print("from sqlalchemy import text")
 from werkzeug.utils import secure_filename
 print("from werkzeug.utils import secure_filename")
-from datetime import datetime
+from datetime import datetime, timedelta
 print("from datetime import datetime")
 from Parts_Upload import main_upload_parts, main_delete_file
 print("from Parts_Upload import main_upload_parts, main_delete_file")
@@ -36,6 +36,12 @@ from AutomationProcesses.AmazonUpload import upload_file_to_amazon
 print("from AutomationProcesses.AmazonUpload import upload_file_to_amazon")
 from AutomationProcesses.download_matrix import download_matrix_toFile
 print("from AutomationProcesses.download_matrix import download_matrix_toFile")
+from flask import render_template, jsonify, request, send_file
+from AutomationProcesses.imported_notImported import automate_process
+import os
+from datetime import datetime
+import zipfile
+import glob
 
 class SafeRotatingFileHandler(RotatingFileHandler):
 	def doRollover(self):
@@ -754,6 +760,181 @@ def get_status_by_date():
     print(status_counts)
     return jsonify({"date": date, "status_counts": status_counts})
 
+@app.route('/import-status')
+def import_status():
+    return render_template('import_status.html')
+
+@app.route('/run-import-status', methods=['POST'])
+def run_import_status():
+    try:
+        data = request.get_json()
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        
+        if not start_date or not end_date:
+            return jsonify({'error': 'Start date and end date are required'}), 400
+        
+        # Run the automation process
+        results = automate_process(last_done_date=start_date, last_date=end_date)
+        
+        # Process results to include required counts
+        processed_results = []
+        for date in results['date'].unique():
+            date_data = results[results['date'] == date]
+            
+            # Process found parts
+            found_data = date_data[date_data['table'] == 'found'].iloc[0] if len(date_data[date_data['table'] == 'found']) > 0 else None
+            not_found_data = date_data[date_data['table'] == 'notfound'].iloc[0] if len(date_data[date_data['table'] == 'notfound']) > 0 else None
+            
+            if found_data is not None:
+                processed_results.append({
+                    'date': date.strftime('%Y-%m-%d'),
+                    'table': 'found',
+                    'total_parts': int(found_data['total_parts']),
+                    'in_progress_count': int(found_data['in_progress']),
+                    'not_received_count': int(found_data['not_received']),
+                    'received_count': int(found_data['received']),
+                    'imported_count': int(found_data['imported']),
+                    'not_imported_count': int(found_data['not_imported'])
+                })
+            
+            if not_found_data is not None:
+                processed_results.append({
+                    'date': date.strftime('%Y-%m-%d'),
+                    'table': 'notfound',
+                    'total_parts': int(not_found_data['total_parts']),
+                    'in_progress_count': int(not_found_data['in_progress']),
+                    'not_received_count': int(not_found_data['not_received']),
+                    'received_count': int(not_found_data['received']),
+                    'imported_count': int(not_found_data['imported']),
+                    'not_imported_count': int(not_found_data['not_imported'])
+                })
+        
+        return jsonify({
+            'message': 'Import status check completed successfully',
+            'results': processed_results
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/download-report/<report_type>/<start_date>/<end_date>')
+def download_report(report_type, start_date, end_date):
+    try:
+        start_date_obj = datetime.strptime(start_date, '%Y-%m-%d')
+        end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+        
+        # Initialize empty list to store dataframes
+        all_dfs = []
+        current_date = start_date_obj
+        
+        # Loop through each date in the range
+        while current_date <= end_date_obj:
+            formatted_date = current_date.strftime('%Y-%m-%d')
+            
+            if report_type == 'imported':
+                filename = f'Imported_NotImported_parts_{formatted_date}.csv'
+            else:  # missed
+                filename = f'Missed_Inprogress_parts_{formatted_date}.csv'
+            
+            file_path = os.path.join('automate_records', filename)
+            
+            if os.path.exists(file_path):
+                try:
+                    # Read the CSV file and add date column
+                    df = pd.read_csv(file_path)
+                    df['report_date'] = formatted_date
+                    all_dfs.append(df)
+                except Exception as e:
+                    app.logger.error(f'Error reading file {filename}: {str(e)}')
+            
+            current_date += timedelta(days=1)
+        
+        if not all_dfs:
+            return jsonify({'error': 'No report files found for the specified date range'}), 404
+        
+        # Concatenate all dataframes
+        combined_df = pd.concat(all_dfs, ignore_index=True)
+        
+        # Create a temporary file for the combined results
+        temp_dir = os.path.join('automate_records', 'temp')
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        if report_type == 'imported':
+            output_filename = f'Combined_Imported_NotImported_parts_{start_date}_to_{end_date}.csv'
+        else:
+            output_filename = f'Combined_Missed_Inprogress_parts_{start_date}_to_{end_date}.csv'
+        
+        temp_file_path = os.path.join(temp_dir, output_filename)
+        
+        # Save the combined DataFrame to CSV
+        combined_df.to_csv(temp_file_path, index=False)
+        
+        # Send the combined file
+        return send_file(
+            temp_file_path,
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=output_filename
+        )
+            
+    except Exception as e:
+        app.logger.error(f'Error in download_report: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+    finally:
+        # Cleanup: Remove temporary file after sending
+        try:
+            if 'temp_file_path' in locals():
+                os.remove(temp_file_path)
+        except Exception as e:
+            app.logger.error(f'Error cleaning up temporary file: {str(e)}')
+
+@app.route('/download-not-approved')
+def download_not_approved():
+    try:
+        # Get the current date in the format used in filenames
+        current_date = datetime.now().strftime("%d-%b-%Y")
+        
+        # Look for the not approved file in the automate_records directory
+        not_approved_pattern = os.path.join('automate_records', f'*not_approved*{current_date}*.txt')
+        not_approved_files = glob.glob(not_approved_pattern)
+        
+        if not not_approved_files:
+            return jsonify({'error': 'No not approved file found for today'}), 404
+            
+        # Get the latest file based on modification time
+        latest_file = max(not_approved_files, key=os.path.getmtime)
+        
+        # Create a temporary directory for the zip file
+        temp_dir = os.path.join('automate_records', 'temp')
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # Create zip filename
+        zip_filename = f'NotApproved_{current_date}.zip'
+        zip_path = os.path.join(temp_dir, zip_filename)
+        
+        # Create the zip file
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # Add the file to the zip
+            zipf.write(latest_file, os.path.basename(latest_file))
+        
+        # Send the zip file
+        return send_file(
+            zip_path,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name=zip_filename
+        )
+            
+    except Exception as e:
+        app.logger.error(f'Error in download_not_approved: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+    finally:
+        # Cleanup: Remove temporary zip file after sending
+        try:
+            if 'zip_path' in locals():
+                os.remove(zip_path)
+        except Exception as e:
+            app.logger.error(f'Error cleaning up temporary zip file: {str(e)}')
 
 def daily_task():
 	daily_check_all()
@@ -803,6 +984,11 @@ scheduler.start()
 
 if __name__ == '__main__':
 	app.run(host='0.0.0.0', port=5000, threaded=True)
+
+
+
+
+
 
 
 
