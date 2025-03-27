@@ -335,7 +335,9 @@ def calculate_import_status(found_feed_path, not_found_feed_path, part_details_f
             })
     results_df = pd.DataFrame(results)
     results_df = results_df[['date','table','total_parts','received_count','imported_count','not_imported_count','in_progress_count','not_received_count']]
+    
     results_df.columns = ['date','table','total_parts','received','imported','not_imported','in_progress','not_received']
+    results_df = results_df[results_df['not_received'] != results_df['total_parts']]
     print(results_df)
     return results_df
 
