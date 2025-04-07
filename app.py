@@ -128,12 +128,14 @@ def load_data():
 		global_df = pd.read_csv(os.path.join(Config.result_path, 'results.csv'))
 		global_df['status'] = global_df['status'].astype(str)
 		global_df['status'].fillna('-',inplace=True)
+		global_df['status_orig'] = global_df['status'].copy()
 		global_df['status'] = global_df['status'].apply(lambda x: 
 			'found' if 'found' in str(x) else
 			'Not Found' if 'Not Found' in str(x) else
 			'WDA' if str(x) in ['Output Pattern not found','Link Step have no links','Error in loading page :404'] else
 			'Proxy' if 'Error' in str(x) or 'Incomplete' in str(x) else
 			'SW' if any(err in str(x) for err in [ 'Exception','java']) else
+			'-' if '-' in str(x) else
 			'not assigned'
 		)
 		
@@ -681,14 +683,58 @@ def get_chart_data():
 		print(traceback.format_exc())
 		return jsonify({'error': str(e)}), 500
 
+
+
+def Get_filtered_data(df, filters):
+	# Apply existing filters first
+	if filters.get('module'):
+		df = df[df['module'].isin(filters['module'])]
+	if filters.get('file_name'):
+		df = df[df['file_name'].isin(filters['file_name'])]
+	if filters.get('man'):
+		df = df[df['man'].isin(filters['man'])]
+	if filters.get('status'):
+		df['status_category'] = df['status'].apply(lambda x: 
+			'Proxy' if '403' in str(x) else
+			'Error' if any(err in str(x) for err in ['Error', 'Exception', 'Incomplete']) else
+			x
+		)
+		df = df[df['status_category'].isin(filters['status'])]
+	if filters.get('prty'):
+		df = df[df['prty'].isin(filters['prty'])]
+	if filters.get('is_expired'):
+		df = df[df['is_expired'].isin([x.lower() == 'true' for x in filters['is_expired']])]
+	if filters.get('table_name'):
+		df = df[df['table_name'].isin(filters['table_name'])]
+	if filters.get('issue_modules'):
+		df = df[df['issue_modules'].isin([x.lower() == 'true' for x in filters['issue_modules']])]
+	if filters.get('startDate') and filters.get('endDate'):
+		df['last_run_date'] = pd.to_datetime(df['last_run_date'])
+		df = df[(df['last_run_date'] >= filters['startDate']) & 
+				(df['last_run_date'] <= filters['endDate'])]
+	if filters.get('done'):
+		df = df[df['done'].isin([int(x) for x in filters['done']])]
+	
+	# Apply index range filter last
+	if filters.get('startIndex') is not None and filters.get('endIndex') is not None:
+		start_idx = int(filters['startIndex'])
+		end_idx = int(filters['endIndex'])
+		print(start_idx, end_idx)
+		if start_idx <= end_idx and start_idx >= 0 and end_idx < len(df):
+			df = df.iloc[start_idx:end_idx + 1]  # +1 because slice is exclusive of end
+			print("filtered")
+	
+	return df
+
 @app.route('/api/download-filtered', methods=['POST'])
 def download_filtered():
 	try:
 		app.logger.info('Downloading filtered results')
 		filters = request.json
-		df = pd.read_csv(os.path.join(Config.result_path, 'results.csv'))
-		
-		# Apply filters
+		df = global_df.copy()
+		df = Get_filtered_data(df, filters)
+
+		"""# Apply filters
 		if filters.get('module'):
 			df = df[df['module'].isin(filters['module'])]
 		if filters.get('file_name'):
@@ -715,7 +761,9 @@ def download_filtered():
 			df['last_run_date'] = pd.to_datetime(df['last_run_date'])
 			df = df[(df['last_run_date'] >= filters['startDate']) & 
 				   (df['last_run_date'] <= filters['endDate'])]
-		
+		if filters.get('done'):
+			df = df[df['done'].isin([int(x) for x in filters['done']])]
+		"""
 		# Create a temporary file for the filtered results
 		temp_file = os.path.join(Config.result_path, 'filtered_results.csv')
 		df.to_csv(temp_file, index=False)
@@ -836,11 +884,11 @@ def run_import_status():
                     'date': date.strftime('%Y-%m-%d'),
                     'table': 'found',
                     'total_parts': int(found_data['total_parts']),
-                    'in_progress_count': int(found_data['in_progress']),
-                    'not_received_count': int(found_data['not_received']),
-                    'received_count': int(found_data['received']),
-                    'imported_count': int(found_data['imported']),
-                    'not_imported_count': int(found_data['not_imported'])
+                    'in_progress_count': int(found_data['in_progress_count']),
+                    'not_received_count': int(found_data['not_received_count']),
+                    'received_count': int(found_data['received_count']),
+                    'imported_count': int(found_data['imported_count']),
+                    'not_imported_count': int(found_data['not_imported_count'])
                 })
             
             if not_found_data is not None:
@@ -1121,9 +1169,65 @@ scheduler.init_app(app)
 scheduler.start()
 
 
+@app.route('/api/upload-filtered-to-amazon', methods=['POST'])
+def upload_filtered_to_amazon():
+    global amazon_upload_in_progress, grouped_data
+    
+    if amazon_upload_in_progress:
+        return jsonify({'error': 'Another upload to Amazon is in progress. Please wait.'}), 429
+    
+    try:
+        with amazon_upload_lock:
+            amazon_upload_in_progress = True
+            
+            # Get filters from request
+            filters = request.json
+            df = global_df.copy()
+            df = Get_filtered_data(df , filters)
+            # Apply filters
+            """if filters.get('module'):
+                df = df[df['module'].isin(filters['module'])]
+            if filters.get('file_name'):
+                df = df[df['file_name'].isin(filters['file_name'])]
+            if filters.get('man'):
+                df = df[df['man'].isin(filters['man'])]
+            if filters.get('status'):
+                df = df[df['status'].isin(filters['status'])]
+            if filters.get('prty'):
+                df = df[df['prty'].isin(filters['prty'])]
+            if filters.get('is_expired'):
+                df = df[df['is_expired'].isin([x.lower() == 'true' for x in filters['is_expired']])]
+            if filters.get('table_name'):
+                df = df[df['table_name'].isin(filters['table_name'])]
+            if filters.get('issue_modules'):
+                df = df[df['issue_modules'].isin([x.lower() == 'true' for x in filters['issue_modules']])]
+            if filters.get('startDate') and filters.get('endDate'):
+                df['last_run_date'] = pd.to_datetime(df['last_run_date'])
+                df = df[(df['last_run_date'] >= filters['startDate']) & 
+                         (df['last_run_date'] <= filters['endDate'])]
+            if filters.get('done'):
+                df = df[df['done'].isin([int(x) for x in filters['done']])]
+		    """
+            # Generate a unique filename for the filtered data
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'filtered_data_{timestamp}.csv'
+            
+            # Upload the filtered data to Amazon
+            upload_file_to_amazon(df, filename)
+            
+            return jsonify({'message': 'Filtered data uploaded to Amazon successfully'})
+    except Exception as e:
+        app.logger.error(f'Error uploading filtered data to Amazon: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+    finally:
+        amazon_upload_in_progress = False
+
+
 
 if __name__ == '__main__':
 	app.run(host='0.0.0.0', port=5000, threaded=True,debug=True)
+
+
 
 
 

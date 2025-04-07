@@ -590,6 +590,20 @@
 		<div class="row filter-section">
 			<div class="col-md-2" id="FilterSection">
 				<button id="downloadFiltered" class="btn btn-outline-secondary w-100 mb-3">Download Filtered</button>
+				<button id="uploadFilteredToAmazon" class="btn btn-outline-secondary w-100 mb-3">
+					<i class="fas fa-cloud-upload-alt"></i> Upload Filtered to Amazon
+				</button>
+				<div class="filter-wrapper mb-3">
+					<label class="form-label">Index Range</label>
+					<div class="input-group">
+						<input type="number" class="form-control" id="startIndex" placeholder="First Index" min="0">
+						<input type="number" class="form-control" id="endIndex" placeholder="Last Index" min="0">
+						<button class="btn btn-outline-secondary" id="clearIndexFilter">
+							<i class="fas fa-times"></i>
+						</button>
+					</div>
+				</div>
+
 				<button id="clearFilters" class="btn btn-outline-secondary w-100 mb-3">
 					<i class="fas fa-filter"></i> Clear All Filters
 				</button>
@@ -686,6 +700,8 @@
 						</button>
 					</div>
 				</div>
+
+				
 			</div>
 
 			<!-- Right Column - Visualizations -->
@@ -1264,7 +1280,9 @@
 			issue_modules: [],
 			done: [],      // Add this line
 			startDate: '',
-			endDate: ''
+			endDate: '',
+			startIndex: null,  // Add this line
+			endIndex: null     // Add this line
 		};
 		// Data Table functionality
 		let tableData = [];
@@ -1299,7 +1317,7 @@
 
 		function updateFilterCounts() {
 				Object.keys(currentFilters).forEach(key => {
-					if (key !== 'startDate' && key !== 'endDate') {
+					if (key !== 'startDate' && key !== 'endDate' && key !== 'startIndex' && key !== 'endIndex' ) {
 						const count = currentFilters[key].length;
 						const countElement = $(`#${key}Count`);
 						if (countElement.length) {
@@ -1836,6 +1854,29 @@
 				updateCharts();
 			});
 
+			// Add event listeners for index range inputs
+			$('#startIndex, #endIndex').on('change', function() {
+				const startIndex = $('#startIndex').val();
+				const endIndex = $('#endIndex').val();
+				
+				if (startIndex && endIndex && parseInt(startIndex) > parseInt(endIndex)) {
+					showNotification('Start index cannot be greater than end index', 'warning');
+					$(this).val('');
+					return;
+				}
+				
+				currentFilters.startIndex = startIndex ? parseInt(startIndex) : null;
+				currentFilters.endIndex = endIndex ? parseInt(endIndex) : null;
+				updateCharts();
+			});
+
+			$('#clearIndexFilter').click(function() {
+				$('#startIndex, #endIndex').val('');
+				currentFilters.startIndex = null;
+				currentFilters.endIndex = null;
+				updateCharts();
+			});
+
 			$('#clearFilters').click(async function() {
 				// Clear all select2 dropdowns
 				$('.select2').each(function() {
@@ -1844,6 +1885,9 @@
 
 				// Clear date inputs
 				$('#startDate, #endDate').val('');
+				
+				// Clear index inputs
+				$('#startIndex, #endIndex').val('');
 				
 				// Reset current filters object
 				currentFilters = {
@@ -1855,8 +1899,11 @@
 					is_expired: [],
 					table_name: [],
 					issue_modules: [],
+					done: [],
 					startDate: '',
-					endDate: ''
+					endDate: '',
+					startIndex: null,
+					endIndex: null
 				};
 
 				// Clear filter counts
@@ -2233,6 +2280,52 @@ function downloadChartData(chartType) {
         document.body.removeChild(link);
     }
 }
+
+// Global variable to track Amazon upload status
+let isAmazonUploading = false;
+
+$('#uploadFilteredToAmazon').click(async function() {
+    if (isAmazonUploading) {
+        showNotification('Another upload to Amazon is in progress. Please wait.', 'warning');
+        return;
+    }
+
+    try {
+        isAmazonUploading = true;
+        const button = $(this);
+        const originalText = button.html();
+        
+        // Update button state
+        button.prop('disabled', true);
+        button.html('<i class="fas fa-sync fa-spin"></i> Uploading...');
+        $('#loading').show();
+
+        const response = await fetch('/api/upload-filtered-to-amazon', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(currentFilters)
+        });
+
+        const result = await response.json();
+        
+        if (response.ok) {
+            showNotification('Filtered data uploaded to Amazon successfully', 'success');
+        } else {
+            throw new Error(result.error || 'Failed to upload filtered data to Amazon');
+        }
+    } catch (error) {
+        console.error('Error uploading filtered data to Amazon:', error);
+        showNotification(error.message, 'error');
+    } finally {
+        isAmazonUploading = false;
+        const button = $('#uploadFilteredToAmazon');
+        button.prop('disabled', false);
+        button.html('<i class="fas fa-cloud-upload-alt"></i> Upload Filtered to Amazon');
+        $('#loading').hide();
+    }
+});
 	</script>
 </body>
 </html>
