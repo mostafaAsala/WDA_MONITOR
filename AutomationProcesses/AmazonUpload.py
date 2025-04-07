@@ -9,15 +9,18 @@ from config import Config
 import os
 # Automatically download and use the latest Chrome WebDriver
 
-def upload_file_to_amazon(df):
+def upload_file_to_amazon(df,filename):
     print(df.columns)
-    
-    df.columns = ['part', 'man', 'module'] 
+    filename = filename.split('.')[0]
+    try:
+        df.columns = ['part', 'man', 'module'] 
+    except Exception as e:
+        print(e)
     df = df[['part','module']]
     df.columns = ['Part','Module']
     df['Prty'] = df['Part'].str.contains('http').map({True: 'P0', False: 'P1'})
     current_folder = os.getcwd()
-    file_path = os.path.join(current_folder, Config.WORK_FOLDER,'AmazonUpload.xlsx')
+    file_path = os.path.join(current_folder, Config.WORK_FOLDER,filename+'.xlsx')
     print("saving excel file")
     df.to_excel(file_path, index=False)
     

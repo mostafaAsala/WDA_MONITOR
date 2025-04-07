@@ -327,7 +327,7 @@ def upload_to_amazon():
             amazon_upload_in_progress = True
             file_path = os.path.join(Config.WORK_FOLDER, filename)
             df = pd.read_csv(file_path, sep='\t')
-            upload_file_to_amazon(df)
+            upload_file_to_amazon(df,filename)
             return jsonify({'message': 'File uploaded to Amazon successfully'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
