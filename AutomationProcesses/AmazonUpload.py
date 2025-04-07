@@ -50,16 +50,15 @@ def upload_file_to_amazon(df):
 
         print("uploading file")
         # Locate the file input and upload a file
-        file_input = driver.find_element(By.XPATH, '//input[@id="exampleFile"]/parent::div')  # Using XPath
+        file_input = driver.find_element(By.XPATH, '//input[@id="exampleFile"]')  # Using XPath
         print(file_input.get_attribute('outerHTML'))
-
-        file_input.click()
+        print("open2")
+        #file_input.click()
         time.sleep(3)
-        pyautogui.typewrite(file_path,interval=0.1)  # Provide the absolute file path
-        time.sleep(1)
-        pyautogui.press("enter")  # Press Enter to select
-        time.sleep(1)
+        file_input.send_keys(file_path)
         # Locate and click the upload button
+        
+        time.sleep(3)
         upload_button = driver.find_element(By.XPATH, '//button[@type="button" and contains(.,"Import")]')  # Update with the actual button ID/class
         upload_button.click()
 

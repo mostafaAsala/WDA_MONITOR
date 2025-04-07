@@ -1,4 +1,5 @@
 import os
+import re
 
 import numpy as np
 print("import os")
@@ -37,12 +38,11 @@ print("from AutomationProcesses.AmazonUpload import upload_file_to_amazon")
 from AutomationProcesses.download_matrix import download_matrix_toFile
 print("from AutomationProcesses.download_matrix import download_matrix_toFile")
 from flask import render_template, jsonify, request, send_file
-from AutomationProcesses.imported_notImported import automate_process
+from AutomationProcesses.imported_notImported import Download_autoImported, automate_process, calculate_import_status, check_and_download_missing_dates, extract_part_details, move_exported_files
 import os
 from datetime import datetime
 import zipfile
 import glob
-
 class SafeRotatingFileHandler(RotatingFileHandler):
 	def doRollover(self):
 		"""
@@ -103,6 +103,8 @@ file_lock = filelock.FileLock(os.path.join(Config.result_path, "results.csv.lock
 df_lock = threading.Lock()
 amazon_upload_lock = threading.Lock()
 matrix_df = pd.read_csv(r'Static Data\matrix.csv')
+direct_feed = pd.read_csv(r"Static Data\DFLIST+a 2.csv")
+
 amazon_upload_in_progress = False
 print("Done importing...")
 # Add Oracle Client to PATH
@@ -522,8 +524,9 @@ def get_chart_data():
 		module_stats = []
 		current_date = pd.Timestamp.now()
 		three_days_ago = current_date - pd.Timedelta(days=3)
+		unique_pairs = df[['module', 'man']].drop_duplicates()
 
-		for module in df['module'].unique():
+		for module, man in unique_pairs.itertuples(index=False):
 			module_df = df[df['module'] == module]
 			total_count = module_df['count'].sum()
 			error_count = module_df[module_df['status'].isin(['Error', 'Proxy'])]['count'].sum()
@@ -549,7 +552,13 @@ def get_chart_data():
 			matrix_old = str(matrix_df[matrix_df['Modules'] == module]['old'].iloc[0]).replace('"', '')
 			if  matrix_old == 'nan':
 				matrix_old = '-'
+			DFF = direct_feed[direct_feed['Supplier'] == man]['Direct Feed']
+			if len(DFF) <1:
+				direct_feed_status = 0
+			else:
+				direct_feed_status =int(DFF.iloc[0])
 			
+
 			#.map({0:'Stopped', 1:'Regular Running',2:'Run By Request',3:'schedule Running'})
 			# Calculate last 3 days statistics
 			recent_df = module_df[module_df['last_run_date'] >= three_days_ago]
@@ -562,6 +571,7 @@ def get_chart_data():
 				'matrix_status': matrix_status,
 				'matrix_comment': matrix_comment,
 				'matrix_old': matrix_old,
+				'direct_feed_status': direct_feed_status,
 				'total_count': int(total_count),
 				'error_count': int(error_count),
 				'error_percentage': round((error_count / total_count) * 100, 2) if total_count > 0 else 0,
@@ -601,11 +611,46 @@ def get_chart_data():
 		# Sort by total count descending
 		file_stats.sort(key=lambda x: x['total_count'], reverse=True)
 		
+		# Calculate new validation statistics
+		validation_stats = {
+			'stopped_modules': {
+				'count': len([m for m in module_stats if m['Running_Status'] == 'Stopped']),
+				'percentage': round(len([m for m in module_stats if m['Running_Status'] == 'Stopped']) / len(module_stats) * 100, 2)
+			},
+			'stopped_parts': {
+				'count': sum(m['total_count'] for m in module_stats if m['Running_Status'] == 'Stopped'),
+				'percentage': round(sum(m['total_count'] for m in module_stats if m['Running_Status'] == 'Stopped') / stats['totalParts'] * 100, 2)
+			},
+			'pending_modules': {
+				'count': len([m for m in module_stats if m['matrix_status'] == 'Pending data team']),
+				'percentage': round(len([m for m in module_stats if m['matrix_status'] == 'Pending data team']) / len(module_stats) * 100, 2)
+			},
+			'pending_parts': {
+				'count': sum(m['total_count'] for m in module_stats if m['matrix_status'] == 'Pending data team'),
+				'percentage': round(sum(m['total_count'] for m in module_stats if m['matrix_status'] == 'Pending data team') / stats['totalParts'] * 100, 2)
+			},
+			'direct_feed_modules': {
+				'count': len([m for m in module_stats if m['direct_feed_status'] == 1]),
+				'percentage': round(len([m for m in module_stats if m['direct_feed_status'] == 1]) / len(module_stats) * 100, 2)
+			}
+		}
 		
+		# Calculate total percentage for validation
+		total_critical_percentage = (
+			validation_stats['stopped_parts']['percentage'] + 
+			validation_stats['pending_parts']['percentage'] + 
+			validation_stats['direct_feed_modules']['percentage']
+		)
+		
+		validation_stats['file_status'] = 'Rejected' if total_critical_percentage > 10 else 'Accepted'
+		validation_stats['total_critical_percentage'] = round(total_critical_percentage, 2)
+
+		# Modify the return_data to include validation stats
 		return_data = jsonify({
 			'stats': stats,
+			'validation_stats': validation_stats,  # Add the new validation stats
 			'tableData': module_stats,
-    		'fileStats': file_stats,  # Add this line
+			'fileStats': file_stats,
 			'status': {
 				'labels': status_counts.index.tolist(),
 				'values': [int(x) for x in status_counts.values.tolist()]
@@ -817,6 +862,89 @@ def run_import_status():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/download-reports', methods=['POST'])
+def download_reports():
+    try:
+        data = request.get_json()
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        
+        if not start_date or not end_date:
+            return jsonify({'error': 'Start date and end date are required'}), 400
+        
+        # Download reports using the existing Download_autoImported function
+        feed_hour, notApproved_hour = Download_autoImported(start_date, end_date)
+        patterns = move_exported_files(Config.prty_feed_path, 'automate_records', 
+                                     feed_hour=feed_hour, notApproved_hour=notApproved_hour)
+        
+        # Get list of available dates from the moved files
+        available_dates = []
+        for pattern in patterns:
+            date_match = re.search(r'\d{2}-[A-Za-z]{3}-\d{4}', pattern)
+            if date_match:
+                date_str = date_match.group()
+                formatted_date = datetime.strptime(date_str, '%d-%b-%Y').strftime('%Y-%m-%d')
+                available_dates.append(formatted_date)
+        
+        return jsonify({
+            'message': 'Reports downloaded successfully',
+            'dates': sorted(list(set(available_dates)))
+        })
+    except Exception as e:
+        app.logger.error(f'Error downloading reports: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/download-part-details', methods=['POST'])
+def download_part_details():
+    try:
+        data = request.get_json()
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+        
+        if not start_date or not end_date:
+            return jsonify({'error': 'Start date and end date are required'}), 400
+        
+        # Download part details using existing functions
+        check_and_download_missing_dates(start_date, end_date, Config.daily_feed_url, Config.daily_feed_path)
+        extract_part_details(Config.daily_feed_path, 'automate_records', start_date, end_date)
+        
+        return jsonify({'message': 'Part details downloaded successfully'})
+    except Exception as e:
+        app.logger.error(f'Error downloading part details: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/calculate-status', methods=['POST'])
+def calculate_status():
+    try:
+        data = request.get_json()
+        dates = data.get('dates')
+        
+        if not dates:
+            return jsonify({'error': 'No dates selected'}), 400
+        
+        # Find the corresponding report files for the selected dates
+        results = []
+        for date in dates:
+            #formatted_date = datetime.strptime(date, '%Y-%m-%d').strftime('%d-%b-%Y')
+            found_file = f'Export_prysysFeed_{date}.txt'
+            not_found_file = f'Export_NotFound_prysysFeed_{date}.txt'
+            
+            # Find matching files
+            found_matches = glob.glob(os.path.join('automate_records', found_file))
+            not_found_matches = glob.glob(os.path.join('automate_records', not_found_file))
+            
+            if found_matches and not_found_matches:
+                result = calculate_import_status(found_matches[0], not_found_matches[0], 'automate_records')
+                results.extend(result.to_dict('records'))
+        print("calculate_import_status completed successfully")
+        return jsonify({
+            'message': 'Status calculated successfully',
+            'results': results
+        })
+    except Exception as e:
+        app.logger.error(f'Error calculating status: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/download-report/<report_type>/<start_date>/<end_date>')
 def download_report(report_type, start_date, end_date):
     try:
@@ -891,50 +1019,33 @@ def download_report(report_type, start_date, end_date):
 @app.route('/download-not-approved')
 def download_not_approved():
     try:
-        # Get the current date in the format used in filenames
-        current_date = datetime.now().strftime("%d-%b-%Y")
+        seven_zip_path = os.path.join('automate_records', 'Latest_Not_Approved.7z')
         
-        # Look for the not approved file in the automate_records directory
-        not_approved_pattern = os.path.join('automate_records', f'*not_approved*{current_date}*.txt')
-        not_approved_files = glob.glob(not_approved_pattern)
+        if not os.path.exists(seven_zip_path):
+            return jsonify({
+                'error': 'No not approved file is currently available. Please try again later.'
+            }), 404
         
-        if not not_approved_files:
-            return jsonify({'error': 'No not approved file found for today'}), 404
+        # Get the file's last modification time
+        mod_time = datetime.fromtimestamp(os.path.getmtime(seven_zip_path))
+        current_time = datetime.now()
+        
+        # Check if file is older than 24 hours
+        if (current_time - mod_time).days >= 1:
+            return jsonify({
+                'error': 'The available file is more than 24 hours old. Please generate a new export first.'
+            }), 404
             
-        # Get the latest file based on modification time
-        latest_file = max(not_approved_files, key=os.path.getmtime)
-        
-        # Create a temporary directory for the zip file
-        temp_dir = os.path.join('automate_records', 'temp')
-        os.makedirs(temp_dir, exist_ok=True)
-        
-        # Create zip filename
-        zip_filename = f'NotApproved_{current_date}.zip'
-        zip_path = os.path.join(temp_dir, zip_filename)
-        
-        # Create the zip file
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            # Add the file to the zip
-            zipf.write(latest_file, os.path.basename(latest_file))
-        
-        # Send the zip file
         return send_file(
-            zip_path,
-            mimetype='application/zip',
+            seven_zip_path,
+            mimetype='application/x-7z-compressed',
             as_attachment=True,
-            download_name=zip_filename
+            download_name=f'Not_Approved_Parts_{mod_time.strftime("%Y%m%d_%H%M")}.7z'
         )
             
     except Exception as e:
         app.logger.error(f'Error in download_not_approved: {str(e)}')
         return jsonify({'error': str(e)}), 500
-    finally:
-        # Cleanup: Remove temporary zip file after sending
-        try:
-            if 'zip_path' in locals():
-                os.remove(zip_path)
-        except Exception as e:
-            app.logger.error(f'Error cleaning up temporary zip file: {str(e)}')
 
 def daily_task():
 	daily_check_all()
@@ -973,6 +1084,33 @@ class TaskConfig:
     ]
 
 
+@app.route('/get-available-dates')
+def get_available_dates():
+    try:
+        # Get list of available dates from your storage location
+        available_dates = []
+        reports_dir = 'automate_records'  # Adjust this to your reports directory
+        
+        # Get all report files and extract dates
+        for file in os.listdir(reports_dir):
+            if file.endswith('.txt') and 'NotFound_prysysFeed' in file:
+                pattern = r"(\d{2}-[A-Za-z]{3}-\d{4})_(\d{2}_[APM]{2})"
+                # Search for the pattern in the filename
+                date_match = re.search(pattern, file)
+                if date_match:
+                    date_str = date_match.group()
+                    available_dates.append(date_str)
+        
+        # Remove duplicates and sort
+        available_dates = sorted(list(set(available_dates)), reverse=True)
+        
+        return jsonify({
+            'dates': available_dates
+        })
+    except Exception as e:
+        app.logger.error(f'Error getting available dates: {str(e)}')
+        return jsonify({'error': str(e)}), 500
+
 
 # Add config to Flask app
 app.config.from_object(TaskConfig)
@@ -982,13 +1120,10 @@ scheduler = APScheduler()
 scheduler.init_app(app)
 scheduler.start()
 
+
+
 if __name__ == '__main__':
-	app.run(host='0.0.0.0', port=5000, threaded=True)
-
-
-
-
-
+	app.run(host='0.0.0.0', port=5000, threaded=True,debug=True)
 
 
 

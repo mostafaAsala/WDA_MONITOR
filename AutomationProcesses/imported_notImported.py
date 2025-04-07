@@ -11,6 +11,7 @@ import zipfile
 import os
 import json
 from datetime import datetime, timedelta
+import py7zr
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from config import Config  # Now this should work
@@ -102,9 +103,9 @@ def check_and_download_missing_dates(start_date, end_date, daily_feed_url, daily
 
 
 
-def move_exported_files(export_path, work_folder,feed_hour, notApproved_hour):
+def move_exported_files(export_path, work_folder, feed_hour, notApproved_hour):
     """
-    Moves exported files matching the pattern to the work folder.
+    Moves exported files matching the pattern to the work folder and handles not approved file specially.
     :param export_path: Path where the exported files are generated
     :param work_folder: Destination folder where files should be moved
     """
@@ -123,12 +124,28 @@ def move_exported_files(export_path, work_folder,feed_hour, notApproved_hour):
         f"Export_prysysFeed_notApproved_{current_date}_{notApproved_hour}.txt"
     ]
     
-    for pattern in patterns:
+    for i, pattern in enumerate(patterns):
         file_path = os.path.join(export_path, pattern)
         if os.path.exists(file_path):
-            destination_path = os.path.join(work_folder, pattern)
-            shutil.move(file_path, destination_path)
-            print(f"Moved: {pattern} to {work_folder}")
+            if i == 2:  # Not approved file
+                # Create 7z file with generic name
+                seven_zip_path = os.path.join(work_folder, 'Latest_Not_Approved.7z')
+                
+                # Remove old 7z if exists
+                if os.path.exists(seven_zip_path):
+                    os.remove(seven_zip_path)
+                    
+                # Create new 7z with the file
+                with py7zr.SevenZipFile(seven_zip_path, 'w') as archive:
+                    archive.write(file_path, os.path.basename(file_path))
+                
+                # Remove original file after compression
+                os.remove(file_path)
+                print(f"Compressed and moved not approved file to: {seven_zip_path}")
+            else:
+                destination_path = os.path.join(work_folder, pattern)
+                shutil.move(file_path, destination_path)
+                print(f"Moved: {pattern} to {work_folder}")
         else:
             print(f"File not found: {file_path}")
 
@@ -336,8 +353,8 @@ def calculate_import_status(found_feed_path, not_found_feed_path, part_details_f
     results_df = pd.DataFrame(results)
     results_df = results_df[['date','table','total_parts','received_count','imported_count','not_imported_count','in_progress_count','not_received_count']]
     
-    results_df.columns = ['date','table','total_parts','received','imported','not_imported','in_progress','not_received']
-    results_df = results_df[results_df['not_received'] != results_df['total_parts']]
+    #results_df.columns = ['date','table','total_parts','received','imported','not_imported','in_progress','not_received']
+    results_df = results_df[results_df['not_received_count'] != results_df['total_parts']]
     print(results_df)
     return results_df
 

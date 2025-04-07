@@ -19,6 +19,29 @@
     </style>
 </head>
 <body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">WDA Monitor</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/visuals">Visualizations</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/import-status">Import Status</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
     <div class="container mt-4">
         <div class="row">
             <div class="col-12">
@@ -27,6 +50,7 @@
                         <h4>Import Status Check</h4>
                     </div>
                     <div class="card-body">
+                        <!-- Date Selection Section -->
                         <div class="row mb-3">
                             <div class="col-md-5">
                                 <label for="startDate" class="form-label">Start Date</label>
@@ -42,12 +66,64 @@
                                 </button>
                             </div>
                         </div>
+
+                        <!-- Status Message and Loading -->
                         <div id="statusMessage" class="alert" style="display: none;"></div>
                         <div id="loading" style="display: none;">
                             <div class="d-flex justify-content-center">
                                 <div class="spinner-border text-primary" role="status">
                                     <span class="visually-hidden">Loading...</span>
                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- Stage Buttons and Report Dates -->
+                        <div class="row mt-3">
+                            <!-- Separate the Download Not Approved button into its own section -->
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">
+                                        <h5 class="card-title mb-0">Not Approved Parts</h5>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-12">
+                                                <button class="btn btn-info w-100" id="downloadNotApproved">
+                                                    Download Latest Not Approved Parts
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-12">
+                                <button class="btn btn-primary w-100 mb-2" id="downloadReports">
+                                    Stage 1: Download Reports
+                                </button>
+                            </div>
+                            <div class="col-12">
+                                <button class="btn btn-primary w-100 mb-2" id="downloadPartDetails">
+                                    Stage 2: Download Part Details
+                                </button>
+                            </div>
+                            <div class="col-12">
+                                <div class="card mb-2">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        Available Report Dates
+                                        <button class="btn btn-sm btn-outline-secondary" id="refreshDates">
+                                            <i class="fas fa-sync-alt"></i> Refresh
+                                        </button>
+                                    </div>
+                                    <div class="card-body">
+                                        <select multiple class="form-control" id="reportDates" size="5"></select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <button class="btn btn-primary w-100 mb-2" id="calculateStatus" >
+                                    Stage 3: Calculate Status
+                                </button>
                             </div>
                         </div>
 
@@ -73,6 +149,7 @@
                                 </table>
                             </div>
 
+                            <!-- Status Summary Table -->
                             <div class="mt-4">
                                 <h5>Status Summary by Date</h5>
                                 <div class="table-responsive">
@@ -96,20 +173,18 @@
                                 </div>
                             </div>
 
+                            
+
+                            <!-- Original Download Buttons for reports -->
                             <div class="row mt-3">
-                                <div class="col-md-6">
-                                    <button class="btn btn-success w-100 mb-2" id="downloadImported" disabled>
-                                        Download Imported/Not Imported Report
+                                <div class="col-6">
+                                    <button class="btn btn-success w-100" id="downloadImported" disabled>
+                                        Download Imported Report
                                     </button>
                                 </div>
-                                <div class="col-md-6">
-                                    <button class="btn btn-info w-100 mb-2" id="downloadMissed" disabled>
-                                        Download Missed/In Progress Report
-                                    </button>
-                                </div>
-                                <div class="col-12">
-                                    <button class="btn btn-warning w-100 mb-2" id="downloadNotApproved">
-                                        Download Latest Not Approved File
+                                <div class="col-6">
+                                    <button class="btn btn-warning w-100" id="downloadMissed" disabled>
+                                        Download Missed Report
                                     </button>
                                 </div>
                             </div>
@@ -192,6 +267,32 @@
         }
 
         $(document).ready(function() {
+            // New function to load available dates
+            async function loadAvailableDates() {
+                try {
+                    const response = await fetch('/get-available-dates');
+                    const data = await response.json();
+                    if (response.ok) {
+                        const select = $('#reportDates');
+                        select.empty();
+                        data.dates.forEach(date => {
+                            select.append(`<option value="${date}">${date}</option>`);
+                        });
+                        // Enable calculate status button if dates are available
+                        if (data.dates.length > 0) {
+                            $('#calculateStatus').prop('disabled', false);
+                        }
+                    } else {
+                        showMessage(data.error || 'Failed to load available dates', 'warning');
+                    }
+                } catch (error) {
+                    showMessage('Error loading available dates', 'danger');
+                }
+            }
+
+            // Load available dates when page loads
+            loadAvailableDates();
+
             $('#checkImportStatus').click(async function() {
                 const startDate = $('#startDate').val();
                 const endDate = $('#endDate').val();
@@ -253,8 +354,13 @@
 
             $('#downloadNotApproved').click(async function() {
                 try {
-                    $(this).prop('disabled', true);
-                    $('#loading').show();
+                    const button = $(this);
+                    const originalText = button.html();
+                    
+                    // Update button state
+                    button.prop('disabled', true);
+                    button.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Downloading...');
+                    
                     showMessage('Preparing not approved file for download...', 'info');
 
                     const response = await fetch('/download-not-approved', {
@@ -266,25 +372,159 @@
                         const url = window.URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = response.headers.get('Content-Disposition').split('filename=')[1];
+                        a.download = 'Latest_Not_Approved.7z';
                         document.body.appendChild(a);
                         a.click();
                         window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
                         showMessage('Not approved file downloaded successfully', 'success');
                     } else {
                         const error = await response.json();
                         showMessage(error.error || 'Failed to download not approved file', 'danger');
                     }
                 } catch (error) {
+                    console.error('Error:', error);
                     showMessage('Error downloading not approved file', 'danger');
+                } finally {
+                    // Reset button state
+                    const button = $('#downloadNotApproved');
+                    button.prop('disabled', false);
+                    button.html('Download Latest Not Approved Parts');
+                }
+            });
+
+            $('#downloadReports').click(async function() {
+                const startDate = $('#startDate').val();
+                const endDate = $('#endDate').val();
+
+                if (!startDate || !endDate) {
+                    showMessage('Please select both start and end dates', 'warning');
+                    return;
+                }
+
+                $(this).prop('disabled', true);
+                $('#loading').show();
+
+                try {
+                    const response = await fetch('/download-reports', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            start_date: startDate,
+                            end_date: endDate
+                        })
+                    });
+
+                    const data = await response.json();
+                    if (response.ok) {
+                        showMessage('Reports downloaded successfully!', 'success');
+                        
+                        // Populate the dates dropdown
+                        const select = $('#reportDates');
+                        select.empty();
+                        data.dates.forEach(date => {
+                            select.append(`<option value="${date}">${date}</option>`);
+                        });
+                    } else {
+                        showMessage(data.error || 'An error occurred', 'danger');
+                    }
+                } catch (error) {
+                    showMessage('An error occurred while downloading reports', 'danger');
                 } finally {
                     $('#loading').hide();
                     $(this).prop('disabled', false);
                 }
             });
+
+            $('#downloadPartDetails').click(async function() {
+                const startDate = $('#startDate').val();
+                const endDate = $('#endDate').val();
+
+                $(this).prop('disabled', true);
+                $('#loading').show();
+
+                try {
+                    const response = await fetch('/download-part-details', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            start_date: startDate,
+                            end_date: endDate
+                        })
+                    });
+
+                    const data = await response.json();
+                    if (response.ok) {
+                        showMessage('Part details downloaded successfully!', 'success');
+                        $('#calculateStatus').prop('disabled', false);
+                    } else {
+                        showMessage(data.error || 'An error occurred', 'danger');
+                    }
+                } catch (error) {
+                    showMessage('An error occurred while downloading part details', 'danger');
+                } finally {
+                    $('#loading').hide();
+                    $(this).prop('disabled', false);
+                }
+            });
+
+            // Modify the calculate status click handler
+            $('#calculateStatus').click(async function() {
+                const selectedDates = $('#reportDates').val();
+                
+                if (!selectedDates || selectedDates.length === 0) {
+                    showMessage('Please select at least one date', 'warning');
+                    return;
+                }
+
+                $(this).prop('disabled', true);
+                $('#loading').show();
+
+                try {
+                    const response = await fetch('/calculate-status', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            dates: selectedDates
+                        })
+                    });
+
+                    const data = await response.json();
+                    if (response.ok) {
+                        showMessage('Status calculation completed successfully!', 'success');
+                        populateResultsTable(data.results);
+                        populateStatusSummaryTable(data.results);
+                        $('#resultsSection').show();
+                        $('#downloadImported').prop('disabled', false);
+                        $('#downloadMissed').prop('disabled', false);
+                    } else {
+                        showMessage(data.error || 'An error occurred', 'danger');
+                    }
+                } catch (error) {
+                    showMessage('An error occurred while calculating status', 'danger');
+                } finally {
+                    $('#loading').hide();
+                    $(this).prop('disabled', false);
+                }
+            });
+
+            // Add refresh button handler
+            $('#refreshDates').click(function() {
+                loadAvailableDates();
+            });
         });
     </script>
 </body>
 </html>
+
+
+
+
 
 

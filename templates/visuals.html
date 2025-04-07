@@ -773,6 +773,95 @@
 			</div>
 		</div>
 
+		<!-- Validation Stats Section -->
+		<h4 class="mb-3">Validation Statistics</h4>
+		<div class="row mb-4">
+			<div class="col-md-4 col-lg-2">
+				<div class="card stat-card" style="background: linear-gradient(45deg, #FF6B6B, #FF8E8E);">
+					<div class="card-body">
+						<div class="d-flex justify-content-between align-items-center">
+							<div>
+								<h6 class="card-subtitle mb-2">Stopped Modules</h6>
+								<h2 class="card-title mb-0" id="stoppedModulesCount">0</h2>
+								<small class="text-white" id="stoppedModulesPercentage">0%</small>
+							</div>
+							<i class="fas fa-stop-circle stat-icon"></i>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="col-md-4 col-lg-2">
+				<div class="card stat-card" style="background: linear-gradient(45deg, #FF6B6B, #FF8E8E);">
+					<div class="card-body">
+						<div class="d-flex justify-content-between align-items-center">
+							<div>
+								<h6 class="card-subtitle mb-2">Stopped Parts</h6>
+								<h2 class="card-title mb-0" id="stoppedPartsCount">0</h2>
+								<small class="text-white" id="stoppedPartsPercentage">0%</small>
+							</div>
+							<i class="fas fa-exclamation-triangle stat-icon"></i>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="col-md-4 col-lg-2">
+				<div class="card stat-card" style="background: linear-gradient(45deg, #FFA500, #FFB74D);">
+					<div class="card-body">
+						<div class="d-flex justify-content-between align-items-center">
+							<div>
+								<h6 class="card-subtitle mb-2">Pending Modules</h6>
+								<h2 class="card-title mb-0" id="pendingModulesCount">0</h2>
+								<small class="text-white" id="pendingModulesPercentage">0%</small>
+							</div>
+							<i class="fas fa-clock stat-icon"></i>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="col-md-4 col-lg-2">
+				<div class="card stat-card" style="background: linear-gradient(45deg, #FFA500, #FFB74D);">
+					<div class="card-body">
+						<div class="d-flex justify-content-between align-items-center">
+							<div>
+								<h6 class="card-subtitle mb-2">Pending Parts</h6>
+								<h2 class="card-title mb-0" id="pendingPartsCount">0</h2>
+								<small class="text-white" id="pendingPartsPercentage">0%</small>
+							</div>
+							<i class="fas fa-hourglass-half stat-icon"></i>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="col-md-4 col-lg-2">
+				<div class="card stat-card" style="background: linear-gradient(45deg, #4CAF50, #81C784);">
+					<div class="card-body">
+						<div class="d-flex justify-content-between align-items-center">
+							<div>
+								<h6 class="card-subtitle mb-2">Direct Feed</h6>
+								<h2 class="card-title mb-0" id="directFeedCount">0</h2>
+								<small class="text-white" id="directFeedPercentage">0%</small>
+							</div>
+							<i class="fas fa-database stat-icon"></i>
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="col-md-4 col-lg-2">
+				<div class="card stat-card" id="fileStatusCard">
+					<div class="card-body">
+						<div class="d-flex justify-content-between align-items-center">
+							<div>
+								<h6 class="card-subtitle mb-2">File Status</h6>
+								<h2 class="card-title mb-0" id="fileStatus">-</h2>
+								<small class="text-white" id="criticalPercentage">0%</small>
+							</div>
+							<i class="fas fa-file-alt stat-icon"></i>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
 		<!-- Charts Section -->
 		<div class="row">
 			<div class="row mt-4">
@@ -968,6 +1057,7 @@
 									<th data-sort="matrix_status">Matrix Status <span class="sort-icon">↕</span></th>
 									<th data-sort="matrix_comment">Matrix comment <span class="sort-icon">↕</span></th>
 									<th data-sort="matrix_old">Matrix old <span class="sort-icon">↕</span></th>
+									<th data-sort="direct_feed_status">direct_feed <span class="sort-icon">↕</span></th>
 									<th data-sort="total_count">Total Count <span class="sort-icon">↕</span></th>
 									<th data-sort="error_count">Error Count <span class="sort-icon">↕</span></th>
 									<th data-sort="error_percentage">Error % (Lower Better) <span class="sort-icon">↕</span></th>
@@ -1332,44 +1422,42 @@
 		}
 
 		async function updateCharts() {
-
 			// Show loading indicators
 			$('.chart-loading, #loading').css('display', 'flex');
 
 			try {
-					let handled_data ={}
-					// Check cache first
-					const cachedData = getCachedData(currentFilters);
+				let handled_data = {}
+				// Check cache first
+				const cachedData = getCachedData(currentFilters);
+				
+				if (cachedData) {
+					console.log('Using cached data:', cachedData); // Debug log
+					handled_data = cachedData;
+				} else {
+					// Fetch new data
+					const response = await fetch('/api/chart-data', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify(currentFilters)
+					});
 					
-					if (cachedData) {
-						console.log('Using cached data');
-						handled_data =  cachedData;
-
-					}else{
-						console.log('Fetching new data');
-						const response = await fetch('/api/chart-data', {
-							method: 'POST',
-							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify(currentFilters)
-						});
-						console.log("fetching data success")
-						if (!response.ok) {
-							throw new Error(`Failed to fetch chart data: ${response.statusText}`);
-						}
-						console.log("response ok")
-						const data = await response.json();
-						
-						console.log("response ok")
-						if (!data || !data.stats || !data.status || !data.isExpired || !data.team || !data.table_name) {
-							throw new Error('Invalid data structure received from server');
-						}
-						// Cache the new data
-						console.log('Caching new data');
-						setCachedData(currentFilters, data);
-						handled_data = data;
+					if (!response.ok) {
+						throw new Error('Network response was not ok');
 					}
-				
-				
+					
+					handled_data = await response.json();
+					console.log('Fetched new data:', handled_data); // Debug log
+					setCachedData(currentFilters, handled_data);
+				}
+
+				// Update validation cards first
+				updateValidationCards(handled_data);
+
+				// Update other charts...
+				// (your existing chart update code)
+
 				const data = handled_data
 				
 				// Update stats
@@ -1622,9 +1710,54 @@
 			}
 		}
 
-
-
-
+		function updateValidationCards(data) {
+			console.log('Updating validation cards with data:', data); // Debug log
+			
+			if (!data || !data.validation_stats) {
+				console.error('No validation stats found in data');
+				return;
+			}
+			
+			const stats = data.validation_stats;
+			
+			try {
+				// Update Stopped Modules
+				$('#stoppedModulesCount').text(stats.stopped_modules.count || 0);
+				$('#stoppedModulesPercentage').text((stats.stopped_modules.percentage || 0) + '%');
+				
+				// Update Stopped Parts
+				$('#stoppedPartsCount').text(stats.stopped_parts.count || 0);
+				$('#stoppedPartsPercentage').text((stats.stopped_parts.percentage || 0) + '%');
+				
+				// Update Pending Modules
+				$('#pendingModulesCount').text(stats.pending_modules.count || 0);
+				$('#pendingModulesPercentage').text((stats.pending_modules.percentage || 0) + '%');
+				
+				// Update Pending Parts
+				$('#pendingPartsCount').text(stats.pending_parts.count || 0);
+				$('#pendingPartsPercentage').text((stats.pending_parts.percentage || 0) + '%');
+				
+				// Update Direct Feed
+				$('#directFeedCount').text(stats.direct_feed_modules.count || 0);
+				$('#directFeedPercentage').text((stats.direct_feed_modules.percentage || 0) + '%');
+				
+				// Update File Status
+				$('#fileStatus').text(stats.file_status || '-');
+				$('#criticalPercentage').text((stats.total_critical_percentage || 0) + '%');
+				
+				// Update File Status Card color based on status
+				const fileStatusCard = document.getElementById('fileStatusCard');
+				if (stats.file_status === 'Rejected') {
+					fileStatusCard.style.background = 'linear-gradient(45deg, #FF5252, #FF1744)';
+				} else {
+					fileStatusCard.style.background = 'linear-gradient(45deg, #00C853, #69F0AE)';
+				}
+				
+				console.log('Validation cards updated successfully');
+			} catch (error) {
+				console.error('Error updating validation cards:', error);
+			}
+		}
 
 		// Add cache clear function for the clear filters button
 		function clearCache() {
@@ -1736,7 +1869,7 @@
 				updateCharts();
 			});
 
-			
+
 
 
 			$('#refreshData').click(async function() {
@@ -1826,6 +1959,7 @@
 					<td>${row.matrix_status || ''}</td>
 					<td>${row.matrix_comment || ''}</td>
 					<td>${row.matrix_old || ''}</td>
+					<td>${row.direct_feed_status || ''}</td>
 					<td>${row.total_count || 0}</td>
 					<td>${row.error_count || 0}</td>
 					<td class="${errorClass}" style="--percentage-width: ${row.error_percentage || 0}%">${row.error_percentage || 0}%</td>
@@ -1902,7 +2036,6 @@ function updateFileTable(data) {
 function renderFileTable() {
     const tbody = document.getElementById('fileTableBody');
     tbody.innerHTML = '';
-    console.log("aaaaaaaaaaaaaaaa")
     fileTableData.forEach(row => {
         const errorClass = getPercentageClass(row.error_percentage || 0, true);
         const foundClass = getPercentageClass(row.found_percentage || 0, false);
@@ -2071,7 +2204,7 @@ function downloadChartData(chartType) {
             csvContent = moduleHeaders.join(',') + '\n';
             data.moduleStats.forEach(row => {
                 csvContent += `${row.module},${row.Running_Status},${row.matrix_status},` +
-                    `${row.matrix_comment},${row.matrix_old},${row.total_count},` +
+                    `${row.matrix_comment},${row.matrix_old},${row.direct_feed_status},${row.total_count},` +
                     `${row.error_count},${row.error_percentage},${row.found_count},` +
                     `${row.found_percentage},${row.expired_count}\n`;
             });
