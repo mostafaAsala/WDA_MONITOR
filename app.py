@@ -139,6 +139,11 @@ def load_data():
 			'not assigned'
 		)
 		
+		global_df['upload_date'] = pd.to_datetime(global_df['upload_date'])  
+		global_df['last_run_date'] = pd.to_datetime(global_df['last_run_date'])  
+		
+		global_df['done'] = global_df['last_run_date']>=(global_df['upload_date']- pd.Timedelta(days=1))
+		
 		global_df['prty'].fillna('-',inplace=True)
 		global_df['table_name'].fillna('-',inplace=True)
 		

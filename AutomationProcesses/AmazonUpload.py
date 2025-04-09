@@ -20,7 +20,7 @@ def upload_file_to_amazon(df,filename):
     df.columns = ['Part','Module']
     df['Prty'] = df['Part'].str.contains('http').map({True: 'P0', False: 'P1'})
     current_folder = os.getcwd()
-    file_path = os.path.join(current_folder, Config.WORK_FOLDER,filename+'.xlsx')
+    file_path = os.path.join(current_folder, Config.UPLOAD_FOLDER,filename+'.xlsx')
     print("saving excel file")
     df.to_excel(file_path, index=False)
     

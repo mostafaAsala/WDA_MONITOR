@@ -493,6 +493,11 @@
 			if (e.target.classList.contains('upload-amazon-btn') || 
 				(e.target.parentElement && e.target.parentElement.classList.contains('upload-amazon-btn'))) {
 				
+				// Show confirmation dialog
+				if (!confirm('Are you sure you want to upload this file to Amazon?')) {
+					return;  // If user clicks Cancel, stop here
+				}
+				
 				if (isAmazonUploading) {
 					showNotification('Another file is currently being uploaded to Amazon. Please wait.', 'warning');
 					return;
@@ -956,3 +961,4 @@
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/js/all.min.js"></script>
 </body>
 </html>
+
