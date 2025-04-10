@@ -8,6 +8,7 @@ class Config:
     SECRET_KEY = 'your-secret-key'
     DB_URI = 'oracle+oracledb://A161070:MostafaAsalA161070@10.199.104.126/analytics'  # Replace with your actual connection string
     WORK_FOLDER = "Data"
+    UPLOAD_FOLDER = "Upload"
     result_path = 'results'
     shared_path = r'\\10.199.104.125\DirectFeed\Mostafa\WDA_MONITOR'
     Date_to_expire = 30

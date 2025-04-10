@@ -160,6 +160,17 @@
 			cursor: not-allowed;
 			opacity: 0.6;
 		}
+		th[data-sort] {
+			cursor: pointer;
+		}
+		th[data-sort]:hover {
+			background-color: #e9ecef;
+		}
+		.sort-icon {
+			display: inline-block;
+			margin-left: 5px;
+			font-size: 0.8em;
+		}
 	</style>
 
 </head>
@@ -254,19 +265,18 @@
 					</div>
 					<div class="card-body">
 						<div class="file-list">
-							<table class="table table-hover">
+							<table class="table table-hover" id="filesTable">
 								<thead>
 									<tr>
 										<th>Select</th>
-										<th>ID</th>
-										<th>File Name</th>
-										<th>Upload Date</th>
-										<th>Last Check Date</th>
-										<th>Stop Monitor Date</th>
-										<th>Status</th>
+										<th data-sort="id">ID <span class="sort-icon">↕</span></th>
+										<th data-sort="file_name">File Name <span class="sort-icon">↕</span></th>
+										<th data-sort="upload_date">Upload Date <span class="sort-icon">↕</span></th>
+										<th data-sort="last_check_date">Last Check Date <span class="sort-icon">↕</span></th>
+										<th data-sort="stop_monitor_date">Stop Monitor Date <span class="sort-icon">↕</span></th>
+										<th data-sort="status">Status <span class="sort-icon">↕</span></th>
 										<th>Actions</th>
 										<th>Upload to Amazon</th>
-
 									</tr>
 								</thead>
 								<tbody id="fileList">
@@ -957,8 +967,171 @@
 			}
 		});
 
+		// Files table sorting functionality
+		let filesTableData = [];
+		let currentFilesSortColumn = '';
+		let filesSortDirection = 'asc';
+
+		// Initialize the files table data
+		document.addEventListener('DOMContentLoaded', function() {
+			// Convert existing table rows to data array
+			const rows = Array.from(document.getElementById('fileList').getElementsByTagName('tr'));
+			filesTableData = rows.map(row => ({
+				checkbox: row.cells[0].innerHTML,
+				id: row.cells[1].textContent,
+				file_name: row.cells[2].querySelector('label').textContent.trim(),
+				upload_date: row.cells[3].textContent,
+				last_check_date: row.cells[4].textContent,
+				stop_monitor_date: row.cells[5].querySelector('input').value,  // Store the actual date value
+				stop_monitor_html: row.cells[5].innerHTML,  // Store the complete HTML structure
+				status: row.cells[6].querySelector('.badge').textContent,
+				actions: row.cells[7].innerHTML,
+				amazon: row.cells[8].innerHTML
+			}));
+
+			// Add click handlers for sorting
+			const filesTable = document.getElementById('filesTable');
+			if (filesTable) {
+				filesTable.querySelector('thead').addEventListener('click', function(e) {
+					const th = e.target.closest('th');
+					if (th && th.dataset.sort) {
+						sortFilesTable(th.dataset.sort);
+					}
+				});
+			}
+		});
+
+		function sortFilesTable(column) {
+			if (currentFilesSortColumn === column) {
+				filesSortDirection = filesSortDirection === 'asc' ? 'desc' : 'asc';
+			} else {
+				currentFilesSortColumn = column;
+				filesSortDirection = 'asc';
+			}
+
+			filesTableData.sort((a, b) => {
+				let valueA = a[column] || '';
+				let valueB = b[column] || '';
+
+				// Handle date columns
+				if (column.includes('date')) {
+					valueA = valueA === 'Not uploaded' || valueA === 'Not checked' ? '' : valueA;
+					valueB = valueB === 'Not uploaded' || valueB === 'Not checked' ? '' : valueB;
+					if (valueA && valueB) {
+						valueA = new Date(valueA);
+						valueB = new Date(valueB);
+					}
+				}
+
+				// Handle ID column as number
+				if (column === 'id') {
+					valueA = valueA === '-' ? -1 : parseInt(valueA);
+					valueB = valueB === '-' ? -1 : parseInt(valueB);
+				}
+
+				if (filesSortDirection === 'asc') {
+					return valueA > valueB ? 1 : valueA < valueB ? -1 : 0;
+				} else {
+					return valueA < valueB ? 1 : valueA > valueB ? -1 : 0;
+				}
+			});
+
+			renderFilesTable();
+		}
+
+		function renderFilesTable() {
+			const tbody = document.getElementById('fileList');
+			tbody.innerHTML = '';
+			const today = new Date().setHours(0, 0, 0, 0);
+			
+			filesTableData.forEach((row, index) => {
+				const tr = document.createElement('tr');
+				tr.className = 'animate__animated animate__fadeIn';
+				
+				// Create file name with conditional expired class
+				const fileNameClass = row.stop_monitor_date && new Date(row.stop_monitor_date).setHours(0, 0, 0, 0) < today ? 'expired-file' : '';
+				
+				tr.innerHTML = `
+					<td>
+						<input class="form-check-input file-checkbox" type="checkbox" value="${row.file_name}" id="file-${index}">
+					</td>
+					<td>${row.id}</td>
+					<td>
+						<label class="form-check-label ${fileNameClass}" for="file-${index}">${row.file_name}</label>
+					</td>
+					<td>${row.upload_date}</td>
+					<td>${row.last_check_date}</td>
+					<td>
+						<div class="input-group">
+							<input type="date" class="form-control form-control-sm stop-date-input" 
+								value="${row.stop_monitor_date || ''}"
+								data-filename="${row.file_name}">
+							<button class="btn btn-outline-primary btn-sm update-stop-date" type="button">Update</button>
+						</div>
+					</td>
+					<td>
+						${row.stop_monitor_date && new Date(row.stop_monitor_date).setHours(0, 0, 0, 0) < today 
+							? '<span class="badge bg-danger">Expired</span>'
+							: `<span class="badge bg-secondary status-badge" data-filename="${row.file_name}">Idle</span>`}
+					</td>
+					<td>${row.actions}</td>
+					<td>${row.amazon}</td>
+				`;
+				tbody.appendChild(tr);
+			});
+
+			// Update sort icons
+			document.querySelectorAll('th[data-sort] .sort-icon').forEach(icon => {
+				icon.textContent = '↕';
+			});
+			if (currentFilesSortColumn) {
+				const currentHeader = document.querySelector(`th[data-sort="${currentFilesSortColumn}"] .sort-icon`);
+				if (currentHeader) {
+					currentHeader.textContent = filesSortDirection === 'asc' ? '↑' : '↓';
+				}
+			}
+
+			// Reattach event listeners
+			reattachEventListeners();
+		}
+
+		function reattachEventListeners() {
+			// Reattach update-stop-date button listeners
+			document.querySelectorAll('.update-stop-date').forEach(button => {
+				button.addEventListener('click', function() {
+					const input = this.previousElementSibling;
+					const fileName = input.dataset.filename;
+					const newDate = input.value;
+					// Your existing update stop date logic here
+					updateStopMonitorDate(fileName, newDate);
+				});
+			});
+
+			// Reattach any other necessary event listeners
+			document.querySelectorAll('.delete-btn').forEach(button => {
+				button.addEventListener('click', function() {
+					const fileName = this.dataset.filename;
+					// Your existing delete logic here
+					deleteFile(fileName);
+				});
+			});
+
+			document.querySelectorAll('.upload-amazon-btn').forEach(button => {
+				button.addEventListener('click', function() {
+					const fileName = this.dataset.filename;
+					// Your existing upload to Amazon logic here
+					uploadToAmazon(fileName);
+				});
+			});
+		}
 	</script>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/js/all.min.js"></script>
 </body>
 </html>
+
+
+
+
+
+
 

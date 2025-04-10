@@ -97,7 +97,6 @@ def get_files_from_folder(folder_path):
     try:
         files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
         file_scan_logger.info(f"Scanned folder '{folder_path}', found files: {files}")
-        files.remove('Data\\AmazonUpload.xlsx')
         return files
     except Exception as e:
         file_scan_logger.error(f"Error scanning folder '{folder_path}': {e}")
@@ -192,19 +191,19 @@ def delete_file(session, parts_table, uploaded_files_table, folder_path, file_na
 
         if not file_record:
             delete_logger.warning(f"File '{file_name}' not found in database. Skipping deletion.")
-            return
-        #print("---------------------------------------------")
-        #print(file_record)
-        
-        #print("---------------------------------------------")
-        file_id = file_record[0]
+        else:
+            #print("---------------------------------------------")
+            #print(file_record)
+            
+            #print("---------------------------------------------")
+            file_id = file_record[0]
 
-        # Delete parts associated with file
-        session.execute(delete(parts_table).where(parts_table.c.file_id == file_id))
+            # Delete parts associated with file
+            session.execute(delete(parts_table).where(parts_table.c.file_id == file_id))
 
-        # Delete file record
-        session.execute(delete(uploaded_files_table).where(uploaded_files_table.c.id == file_id))
-        session.commit()
+            # Delete file record
+            session.execute(delete(uploaded_files_table).where(uploaded_files_table.c.id == file_id))
+            session.commit()
 
         # Delete the physical file
         file_path = os.path.join(folder_path, file_name)
