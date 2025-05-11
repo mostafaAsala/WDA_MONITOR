@@ -124,6 +124,11 @@
 		.select2-container {
 			width: 100% !important;
 		}
+		.select2-selection--multiple {
+			max-height: 80px; /* or any height you prefer */
+			overflow-y: auto !important;
+			overflow-x: hidden;
+		}
 		
 		.filter-count {
 			display: none;
@@ -1362,12 +1367,18 @@
 				// Initialize select2 dropdowns while preserving selections
 				const initSelect2 = (elementId, options, placeholder) => {
 					const currentVal = $(`#${elementId}`).val();
+					console.log("options: ",options)
 					console.log(`#${elementId}`)
 					console.log(currentVal)
 					$(`#${elementId}`).empty().select2({
 						
 						data: options.map(opt => ({ id: opt, text: opt })),
+						allowClear: true,
+
 						placeholder: placeholder,
+						minimumResultsForSearch: Infinity,  // hides search box
+  						//templateSelection: null,        // hides selected item
+						multiple: true,
 						width: '100%'
 					});
 					if (currentVal) {
