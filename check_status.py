@@ -1,11 +1,12 @@
 import os
 import logging
 from datetime import datetime
+from typing import Text
 from sqlalchemy import create_engine, text
 import pandas as pd
 from datetime import datetime, timedelta
 import oracledb
-from config import Config
+from config import Config,SQLQueries
 import traceback
 from sqlalchemy.pool import QueuePool
 import tempfile
@@ -160,14 +161,17 @@ def Get_status(files_list=None, ignore_date=True, daily_export=False):
             status_logger.info("Date check disabled")
         else:
             check_date = "and NVL(TO_CHAR(last_check_date,'DD-MON-YYYY'), TO_DATE('01-JAN-1900', 'DD-MON-YYYY')) < TO_CHAR(sysdate,'DD-MON-YYYY')"
+            check_date = SQLQueries.q_add_check_date
             status_logger.info("Using date check condition")
 
         if daily_export:
             date_condition = "and NVL(stop_monitor_date, TO_DATE('01-JAN-2999', 'DD-MON-YYYY')) > sysdate"
+            date_condition = SQLQueries.q_stop_monitor
             status_logger.info("Using daily export condition")
         else:
             date_condition = ""
             date_condition = "and NVL(stop_monitor_date, TO_DATE('01-JAN-2999', 'DD-MON-YYYY')) > sysdate"
+            date_condition = SQLQueries.q_stop_monitor
         status_logger.info(f"Calculating Status for files: {files_string}")
         
         query = text(f"""
@@ -319,6 +323,8 @@ def Get_status(files_list=None, ignore_date=True, daily_export=False):
 
     """)
     
+
+        query =  SQLQueries.q_overall_status.format(files_string=str(files_string), check_date=check_date, date_condition=date_condition)
         update_files_query = f"""
                     UPDATE uploaded_files
                     SET 
@@ -331,7 +337,7 @@ def Get_status(files_list=None, ignore_date=True, daily_export=False):
         with engine.begin() as connection:
             try:
                 status_logger.info("Starting Not Found status update query execution...")
-                connection.execute(query)
+                connection.execute(text(query))
                 status_logger.info("Status calculation completed successfully")
                 
                 status_logger.info("Updating last check dates...")
@@ -591,7 +597,7 @@ def Download_results(files_list = None, daily_export=False):
     try:
         if files_list is None:
             status_logger.info("No files specified, downloading all results")
-            result_query = text("select par.*, md.man_id, md.module_id, md.WDA_FLAG from (select x.* ,y.file_name, y.UPLOAD_DATE, y.LAST_CHECK_DATE, y.STOP_MONITOR_DATE from parts x join uploaded_files y on x.file_id = y.id )par join updatesys.tbl_man_modules@new3_n md on par.module = md.module_name ")
+            result_query = text("select par.*, md.man_id, md.module_id, md.WDA_FLAG from (select x.* ,y.file_name , y.UPLOAD_DATE, y.LAST_CHECK_DATE, y.STOP_MONITOR_DATE from parts x join uploaded_files y on x.file_id = y.id )par join updatesys.tbl_man_modules@new3_n md on par.module = md.module_name ")
         else:
             files_string = files_list if isinstance(files_list, str) else str(tuple(files_list))
             if isinstance(files_list, list) and len(files_list)==1:

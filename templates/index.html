@@ -610,6 +610,7 @@
 		});
 
 		document.querySelectorAll('.delete-btn').forEach(button => {
+			console.log("deleting")
 			button.addEventListener('click', async () => {
 				const filename = button.dataset.filename;
 				if (confirm(`Delete ${filename}?`)) {
@@ -1109,11 +1110,33 @@
 
 			// Reattach any other necessary event listeners
 			document.querySelectorAll('.delete-btn').forEach(button => {
-				button.addEventListener('click', function() {
-					const fileName = this.dataset.filename;
-					// Your existing delete logic here
-					deleteFile(fileName);
-				});
+
+				button.addEventListener('click', async () => {
+				const filename = button.dataset.filename;
+				if (confirm(`Delete ${filename}?`)) {
+					try {
+						showLoading();
+						const response = await fetch(`/delete/${filename}`, {
+							method: 'POST'
+						});
+						const result = await response.json();
+						
+						if (response.ok) {
+							button.closest('tr').classList.add('animate__fadeOutRight');
+							setTimeout(() => {
+								location.reload();
+							}, 500);
+							showNotification('File deleted successfully');
+						} else {
+							showNotification(result.error, 'danger');
+						}
+					} catch (error) {
+						showNotification('Error deleting file', 'danger');
+					} finally {
+						hideLoading();
+					}
+				}
+			});
 			});
 
 			document.querySelectorAll('.upload-amazon-btn').forEach(button => {

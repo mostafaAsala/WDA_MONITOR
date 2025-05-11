@@ -1,5 +1,6 @@
 import shutil
 import sys
+import traceback
 import pandas as pd
 import requests
 from selenium import webdriver
@@ -219,142 +220,154 @@ def calculate_import_status(found_feed_path, not_found_feed_path, part_details_f
     
     not_found_feed = pd.read_csv(not_found_feed_path, delimiter='\t',encoding='mbcs',dtype=str)
     not_found_feed.dropna(subset=['check_date'])
+    check_dates = found_feed['check_date'].unique()
+    check_dates = pd.to_datetime(check_dates)
     print("read found and not found")
     results = []
+    print(check_dates)
     i=0
     for file_name in os.listdir(part_details_folder):
-        
-        if file_name.endswith(".txt") and file_name.startswith("PartDetails"):
-            print(f"reading {file_name}")
-            part_details_path = os.path.join(part_details_folder, file_name)
-            part_details = pd.read_csv(part_details_path, delimiter='\t', encoding='mbcs', dtype=str, on_bad_lines='skip')
-            part_details = part_details.dropna(subset=['Priority'])
-            part_details.columns = ['mpn', 'man', 'module','Priority','Online Link','Status','Found Part','Sys Date']
-            part_details['status'] = part_details['Status'].apply(lambda x: 'found' if str(x).lower() == 'found' else 'not found')
-            part_details = part_details.sort_values(by=['mpn', 'man', 'module', 'status'], ascending=[True, True, True, True])
-            part_details = part_details.drop_duplicates(subset=['mpn', 'man', 'module'], keep='first')
-            print("droped duplicates")
-            
-            date = pd.to_datetime(part_details['Sys Date'].dropna().unique()[0])
-            print(date)
-            
-            # Process found parts
-            found_feed_date = found_feed[pd.to_datetime(found_feed['check_date'])==date]
-            found_feed_date = found_feed_date.drop_duplicates(subset=['mpn', 'man', 'module'], keep='first')
-            found_feed_date = found_feed_date.dropna(subset=['check_date'])
-            found_merge = found_feed_date.merge(part_details[part_details['status'] == 'found'], 
-                                              on=['mpn', 'man', 'module'], how='outer', indicator=True)
-            
-            # Process not found parts
-            notfound_feed_date = not_found_feed[pd.to_datetime(not_found_feed['check_date'])==date]
-            notfound_feed_date = notfound_feed_date.drop_duplicates(subset=['mpn', 'man', 'module'], keep='first')
-            notfound_feed_date = notfound_feed_date.dropna(subset=['check_date'])
-            not_found_merge = notfound_feed_date.merge(part_details[part_details['status'] == 'not found'], 
-                                                      on=['mpn', 'man', 'module'], how='outer', indicator=True)
-            
-            # Process auto import status
-            found_merge['received'] = found_merge['_merge'].map({'both': 'received', 'right_only': 'not received'})
-            not_found_merge['received'] = not_found_merge['_merge'].map({'both': 'received', 'right_only': 'not received'})
-            
-            found_merge['auto_imp_status'] = found_merge.apply(
-                lambda row: '' if pd.isna(row['auto_imp_status']) or row['received']== 'not received' 
-                else 'In Progress' if row['auto_imp_status'] == 'In Progress' 
-                else 'Not Imported' if 'Not Imported' in str(row['auto_imp_status']) 
-                else 'Imported', axis=1
-            )
-            
-            not_found_merge['auto_imp_status'] = not_found_merge.apply(
-                lambda row: '' if pd.isna(row['auto_imp_status']) or row['received']== 'not received' 
-                else 'In Progress' if row['auto_imp_status'] == 'In Progress' 
-                else 'Imported', axis=1
-            )
-            
-            # Create reports for found parts
-            found_report = found_merge[['mpn', 'module', 'Status', 'auto_imp_status', 'received']].copy()
-            found_report['auto_imp_status'] = found_report['auto_imp_status'].apply(lambda x: 'NotReceived' if x == '' else x)
-            found_report['Category'] = found_report['auto_imp_status'] + ' found'
-            found_report.columns = ['Part Number', 'Module Name', 'Status', 'Auto Import Status', 'Received', 'Category']
-            
-            # Create reports for not found parts
-            notfound_report = not_found_merge[['mpn', 'module', 'Status', 'auto_imp_status', 'received']].copy()
-            notfound_report['auto_imp_status'] = notfound_report['auto_imp_status'].apply(lambda x: 'NotReceived' if x == '' else x)
-            notfound_report['Category'] = notfound_report['auto_imp_status'] + ' NotFound'
-            notfound_report.columns = ['Part Number', 'Module Name', 'Status', 'Auto Import Status', 'Received', 'Category']
-            
-            # Combine all reports
-            daily_report = pd.concat([found_report, notfound_report])
-            daily_report['date'] = date
-            
-            # Create Imported_NotImported_parts report
-            imported_not_imported = daily_report[
-                (daily_report['Auto Import Status'].isin(['Imported', 'Not Imported'])) & 
-                (daily_report['Received'] == 'received')
-            ].copy()
-            
-            # Create Missed_Inprogress_parts report
-            missed_inprogress = daily_report[
-                ((daily_report['Auto Import Status'] == 'In Progress') & (daily_report['Received'] == 'received')) |
-                (daily_report['Received'] == 'not received')
-            ].copy()
-            
-            # Remove unnecessary columns and export
-            columns_to_export = ['Part Number', 'Module Name', 'Status', 'Auto Import Status', 'Category', 'date']
-            
-            # Export Imported_NotImported_parts
-            imported_not_imported = imported_not_imported[columns_to_export]
-            report_filename = f'Imported_NotImported_parts_{date.strftime("%Y-%m-%d")}.csv'
-            report_path = os.path.join(part_details_folder, report_filename)
-            imported_not_imported.to_csv(report_path, index=False)
-            print(f"Exported imported/not imported report: {report_filename}")
-            
-            # Export Missed_Inprogress_parts
-            missed_inprogress = missed_inprogress[columns_to_export]
-            report_filename = f'Missed_Inprogress_parts_{date.strftime("%Y-%m-%d")}.csv'
-            report_path = os.path.join(part_details_folder, report_filename)
-            missed_inprogress.to_csv(report_path, index=False)
-            print(f"Exported missed/in progress report: {report_filename}")
-            
-            # Continue with existing statistics calculation
-            total_parts = len(part_details[part_details['status'] == 'found'])
-            received_count = (found_merge['received'] == 'received' ).sum() 
-            not_received_count = (found_merge['received'] == 'not received').sum() 
-            imported_count = (found_merge['auto_imp_status'] == 'Imported').sum()
-            not_imported_count = (found_merge['auto_imp_status'] == 'Not Imported').sum()
-            in_progress_count = (found_merge['auto_imp_status'] == 'In Progress').sum()
-            
-            results.append({
-                'date': date,
-                'table': 'found',
-                'total_parts': total_parts,
-                'received_count': received_count,
-                'not_received_count': not_received_count,
-                'imported_count': imported_count,
-                'not_imported_count': not_imported_count,
-                'in_progress_count': in_progress_count
-            })
+        print(f"checking {file_name}")
+        try:
+            if file_name.endswith(".txt") and file_name.startswith("PartDetails") and pd.to_datetime(file_name.split('@')[1].split('.')[0]) in check_dates:
+                print(f"reading {file_name}")
+                part_details_path = os.path.join(part_details_folder, file_name)
+                part_details = pd.read_csv(part_details_path, delimiter='\t', encoding='mbcs', dtype=str, on_bad_lines='skip')
+                part_details = part_details.dropna(subset=['Priority'])
+                part_details.columns = ['mpn', 'man', 'module','Priority','Online Link','Status','Found Part','Sys Date']
+                part_details['status'] = part_details['Status'].apply(lambda x: 'found' if str(x).lower() == 'found' else 'not found')
+                part_details = part_details.sort_values(by=['mpn', 'man', 'module', 'status'], ascending=[True, True, True, True])
+                part_details = part_details.drop_duplicates(subset=['mpn', 'man', 'module'], keep='first')
+                print("droped duplicates")
+                
+                date = pd.to_datetime(part_details['Sys Date'].dropna().unique()[0])
+                print(date)
+                
+                # Process found parts
+                found_feed_date = found_feed[pd.to_datetime(found_feed['check_date'])==date]
+                found_feed_date = found_feed_date.drop_duplicates(subset=['mpn', 'man', 'module'], keep='first')
+                found_feed_date = found_feed_date.dropna(subset=['check_date'])
+                found_merge = found_feed_date.merge(part_details[part_details['status'] == 'found'], 
+                                                on=['mpn', 'man', 'module'], how='outer', indicator=True)
+                
+                # Process not found parts
+                notfound_feed_date = not_found_feed[pd.to_datetime(not_found_feed['check_date'])==date]
+                notfound_feed_date = notfound_feed_date.drop_duplicates(subset=['mpn', 'man', 'module'], keep='first')
+                notfound_feed_date = notfound_feed_date.dropna(subset=['check_date'])
+                not_found_merge = notfound_feed_date.merge(part_details[part_details['status'] == 'not found'], 
+                                                        on=['mpn', 'man', 'module'], how='outer', indicator=True)
+                
+                # Process auto import status
+                found_merge['received'] = found_merge['_merge'].map({'both': 'received', 'right_only': 'not received'})
+                not_found_merge['received'] = not_found_merge['_merge'].map({'both': 'received', 'right_only': 'not received'})
+                
+                found_merge['auto_imp_status'] = found_merge.apply(
+                    lambda row: '' if pd.isna(row['auto_imp_status']) or row['received']== 'not received' 
+                    else 'In Progress' if row['auto_imp_status'] == 'In Progress' 
+                    else 'Not Imported' if 'Not Imported' in str(row['auto_imp_status']) 
+                    else 'Imported', axis=1
+                )
+                
+                not_found_merge['auto_imp_status'] = not_found_merge.apply(
+                    lambda row: '' if pd.isna(row['auto_imp_status']) or row['received']== 'not received' 
+                    else 'In Progress' if row['auto_imp_status'] == 'In Progress' 
+                    else 'Imported', axis=1
+                )
+                
+                # Create reports for found parts
+                found_report = found_merge[['mpn', 'module', 'Status', 'auto_imp_status', 'received']].copy()
+                found_report['auto_imp_status'] = found_report['auto_imp_status'].apply(lambda x: 'NotReceived' if x == '' else x)
+                found_report['Category'] = found_report['auto_imp_status'] + ' found'
+                found_report.columns = ['Part Number', 'Module Name', 'Status', 'Auto Import Status', 'Received', 'Category']
+                
+                # Create reports for not found parts
+                notfound_report = not_found_merge[['mpn', 'module', 'Status', 'auto_imp_status', 'received']].copy()
+                notfound_report['auto_imp_status'] = notfound_report['auto_imp_status'].apply(lambda x: 'NotReceived' if x == '' else x)
+                notfound_report['Category'] = notfound_report['auto_imp_status'] + ' NotFound'
+                notfound_report.columns = ['Part Number', 'Module Name', 'Status', 'Auto Import Status', 'Received', 'Category']
+                
+                # Combine all reports
+                daily_report = pd.concat([found_report, notfound_report])
+                daily_report['date'] = date
+                
+                # Create Imported_NotImported_parts report
+                imported_not_imported = daily_report[
+                    (daily_report['Auto Import Status'].isin(['Imported', 'Not Imported'])) & 
+                    (daily_report['Received'] == 'received')
+                ].copy()
+                
+                # Create Missed_Inprogress_parts report
+                missed_inprogress = daily_report[
+                    ((daily_report['Auto Import Status'] == 'In Progress') & (daily_report['Received'] == 'received')) |
+                    (daily_report['Received'] == 'not received')
+                ].copy()
+                
+                # Remove unnecessary columns and export
+                columns_to_export = ['Part Number', 'Module Name', 'Status', 'Auto Import Status', 'Category', 'date']
+                
+                # Export Imported_NotImported_parts
+                imported_not_imported = imported_not_imported[columns_to_export]
+                report_filename = f'Imported_NotImported_parts_{date.strftime("%Y-%m-%d")}.csv'
+                report_path = os.path.join(part_details_folder, report_filename)
+                imported_not_imported.to_csv(report_path, index=False)
+                print(f"Exported imported/not imported report: {report_filename}")
+                
+                # Export Missed_Inprogress_parts
+                missed_inprogress = missed_inprogress[columns_to_export]
+                report_filename = f'Missed_Inprogress_parts_{date.strftime("%Y-%m-%d")}.csv'
+                report_path = os.path.join(part_details_folder, report_filename)
+                missed_inprogress.to_csv(report_path, index=False)
+                print(f"Exported missed/in progress report: {report_filename}")
+                
+                # Continue with existing statistics calculation
+                total_parts = len(part_details[part_details['status'] == 'found'])
+                received_count = (found_merge['received'] == 'received' ).sum() 
+                not_received_count = (found_merge['received'] == 'not received').sum() 
+                imported_count = (found_merge['auto_imp_status'] == 'Imported').sum()
+                not_imported_count = (found_merge['auto_imp_status'] == 'Not Imported').sum()
+                in_progress_count = (found_merge['auto_imp_status'] == 'In Progress').sum()
+                
+                results.append({
+                    'date': date,
+                    'table': 'found',
+                    'total_parts': total_parts,
+                    'received_count': received_count,
+                    'not_received_count': not_received_count,
+                    'imported_count': imported_count,
+                    'not_imported_count': not_imported_count,
+                    'in_progress_count': in_progress_count
+                })
 
-            total_parts = len(part_details[part_details['status'] == 'not found'])
-            received_count = (not_found_merge['received'] == 'received').sum() 
-            not_received_count = (not_found_merge['received'] == 'not received').sum() 
-            imported_count = (not_found_merge['auto_imp_status'] == 'Imported').sum()
-            not_imported_count = (not_found_merge['auto_imp_status'] == 'Not Imported').sum()
-            in_progress_count = (not_found_merge['auto_imp_status'] == 'In Progress').sum()
-            
-            results.append({
-                'date': date,
-                'table': 'notfound',
-                'total_parts': total_parts,
-                'received_count': received_count,
-                'not_received_count': not_received_count,
-                'imported_count': imported_count,
-                'not_imported_count': not_imported_count,
-                'in_progress_count': in_progress_count
-            })
-    results_df = pd.DataFrame(results)
-    results_df = results_df[['date','table','total_parts','received_count','imported_count','not_imported_count','in_progress_count','not_received_count']]
-    
-    #results_df.columns = ['date','table','total_parts','received','imported','not_imported','in_progress','not_received']
-    results_df = results_df[results_df['not_received_count'] != results_df['total_parts']]
+                total_parts = len(part_details[part_details['status'] == 'not found'])
+                received_count = (not_found_merge['received'] == 'received').sum() 
+                not_received_count = (not_found_merge['received'] == 'not received').sum() 
+                imported_count = (not_found_merge['auto_imp_status'] == 'Imported').sum()
+                not_imported_count = (not_found_merge['auto_imp_status'] == 'Not Imported').sum()
+                in_progress_count = (not_found_merge['auto_imp_status'] == 'In Progress').sum()
+                
+                results.append({
+                    'date': date,
+                    'table': 'notfound',
+                    'total_parts': total_parts,
+                    'received_count': received_count,
+                    'not_received_count': not_received_count,
+                    'imported_count': imported_count,
+                    'not_imported_count': not_imported_count,
+                    'in_progress_count': in_progress_count
+                })
+        except Exception as e:
+            print(traceback.format_exc())
+            print(f"Error processing {file_name}: {str(e)}")
+            continue
+    try:
+        results_df = pd.DataFrame(results)
+        results_df = results_df[['date','table','total_parts','received_count','imported_count','not_imported_count','in_progress_count','not_received_count']]
+        
+        #results_df.columns = ['date','table','total_parts','received','imported','not_imported','in_progress','not_received']
+        results_df = results_df[results_df['not_received_count'] != results_df['total_parts']]
+    except Exception as e:
+        print(traceback.format_exc())
+        print(f"Error processing results: {str(e)}")
     print(results_df)
     return results_df
 

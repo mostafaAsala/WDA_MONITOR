@@ -130,9 +130,9 @@ def load_data():
 		global_df['status'].fillna('-',inplace=True)
 		global_df['status_orig'] = global_df['status'].copy()
 		global_df['status'] = global_df['status'].apply(lambda x: 
-			'found' if 'found' in str(x) else
-			'Not Found' if 'Not Found' in str(x) else
 			'WDA' if str(x) in ['Output Pattern not found','Link Step have no links','Error in loading page :404'] else
+			'Not Found' if 'Not Found' in str(x) else
+			'found' if 'found' in str(x) else
 			'Proxy' if 'Error' in str(x) or 'Incomplete' in str(x) else
 			'SW' if any(err in str(x) for err in [ 'Exception','java']) else
 			'-' if '-' in str(x) else
@@ -457,7 +457,7 @@ def get_filter_options():
 			'Files': sorted(grouped_data['file_name'].unique().tolist()),
 			'projects': sorted(grouped_data['file_name'].unique().tolist()),
 			'manufacturers': sorted(grouped_data[grouped_data['man'].notna()]['man'].unique().tolist()),
-			'priorities': sorted(grouped_data['prty'].unique().tolist()),
+			'priorities': sorted(grouped_data['prty'].astype(str).unique().tolist()),
 			'table_name': sorted(grouped_data[grouped_data['table_name'].notna()]['table_name'].unique().tolist())
 		}
 		filter_options = jsonify(filers_dict)
@@ -465,7 +465,7 @@ def get_filter_options():
 		return filter_options
 
 	except Exception as e:
-		app.logger.error(f'Error fetching filter options: {str(e)}')
+		app.logger.error(f'Error fetching filter options: {str(traceback.format_exc())}')
 		
 		return jsonify({'error': str(e)}), 500
 
@@ -550,21 +550,27 @@ def get_chart_data():
 			}
 			
 			running_status = number_to_string[int(module_df['wda_flag'].iloc[0])]
-			matrix_status = str(matrix_df[matrix_df['Modules'] == module]['Running Status'].iloc[0]).replace('"', '')
-			if  matrix_status == 'nan':
-				matrix_status = '-'
-			matrix_comment = str(matrix_df[matrix_df['Modules'] == module]['Module Comment'].iloc[0]).replace('"', '')
-			if  matrix_comment== 'nan':
-				matrix_comment = '-'
-			matrix_old = str(matrix_df[matrix_df['Modules'] == module]['old'].iloc[0]).replace('"', '')
-			if  matrix_old == 'nan':
-				matrix_old = '-'
-			DFF = direct_feed[direct_feed['Supplier'] == man]['Direct Feed']
-			if len(DFF) <1:
-				direct_feed_status = 0
+			if module in matrix_df['Modules'].values:
+				matrix_status = str(matrix_df[matrix_df['Modules'] == module]['Running Status'].iloc[0]).replace('"', '')
+				if  matrix_status == 'nan':
+					matrix_status = '-'
+				matrix_comment = str(matrix_df[matrix_df['Modules'] == module]['Module Comment'].iloc[0]).replace('"', '')
+				if  matrix_comment== 'nan':
+					matrix_comment = '-'
+				matrix_old = str(matrix_df[matrix_df['Modules'] == module]['old'].iloc[0]).replace('"', '')
+				if  matrix_old == 'nan':
+					matrix_old = '-'
+				DFF = direct_feed[direct_feed['Supplier'] == man]['Direct Feed']
+				if len(DFF) <1:
+					direct_feed_status = 0
+				else:
+					direct_feed_status =int(DFF.iloc[0])
 			else:
-				direct_feed_status =int(DFF.iloc[0])
-			
+				matrix_status = '-'
+				matrix_comment = '-'
+				matrix_old = '-'
+				direct_feed_status = 0
+	
 
 			#.map({0:'Stopped', 1:'Regular Running',2:'Run By Request',3:'schedule Running'})
 			# Calculate last 3 days statistics
@@ -874,7 +880,7 @@ def run_import_status():
         
         # Run the automation process
         results = automate_process(last_done_date=start_date, last_date=end_date)
-        
+        print(results.head())
         # Process results to include required counts
         processed_results = []
         for date in results['date'].unique():
@@ -901,11 +907,11 @@ def run_import_status():
                     'date': date.strftime('%Y-%m-%d'),
                     'table': 'notfound',
                     'total_parts': int(not_found_data['total_parts']),
-                    'in_progress_count': int(not_found_data['in_progress']),
-                    'not_received_count': int(not_found_data['not_received']),
-                    'received_count': int(not_found_data['received']),
-                    'imported_count': int(not_found_data['imported']),
-                    'not_imported_count': int(not_found_data['not_imported'])
+                    'in_progress_count': int(not_found_data['in_progress_count']),
+                    'not_received_count': int(not_found_data['not_received_count']),
+                    'received_count': int(not_found_data['received_count']),
+                    'imported_count': int(not_found_data['imported_count']),
+                    'not_imported_count': int(not_found_data['not_imported_count'])
                 })
         
         return jsonify({
@@ -913,6 +919,7 @@ def run_import_status():
             'results': processed_results
         })
     except Exception as e:
+        print(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/download-reports', methods=['POST'])
