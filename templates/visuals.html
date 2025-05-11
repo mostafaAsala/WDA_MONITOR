@@ -120,7 +120,7 @@
 			border-radius: 4px;
 			margin: 10px;
 		}
-		
+
 		.select2-container {
 			width: 100% !important;
 		}
@@ -129,7 +129,7 @@
 			overflow-y: auto !important;
 			overflow-x: hidden;
 		}
-		
+
 		.filter-count {
 			display: none;
 			margin-left: 5px;
@@ -145,20 +145,20 @@
 			border-radius: 5px;
 			margin-bottom: 20px;
 		}
-		
+
 		.btn-filter {
 			margin-top: 32px;
 		}
-		
+
 		.chart-title {
 			margin-bottom: 15px;
 			color: #2c3e50;
 		}
-		
+
 		.navbar {
 			margin-bottom: 20px;
 		}
-		
+
 		.loading {
 			position: fixed;
 			top: 0;
@@ -171,7 +171,7 @@
 			align-items: center;
 			z-index: 9999;
 		}
-		
+
 		.loading-spinner {
 			width: 50px;
 			height: 50px;
@@ -484,7 +484,7 @@
 				font-size: 0.85rem;
 				padding: 8px 6px;
 			}
-			
+
 			.data-table td {
 				font-size: 0.9rem;
 				padding: 6px;
@@ -509,7 +509,7 @@
 			border-radius: 4px;
 			background: white;
 		}
-		
+
 		@keyframes spin {
 			0% {
 				transform: rotate(0deg);
@@ -615,30 +615,42 @@
 				<button id="refreshData" class="btn btn-outline-secondary w-100 mb-3">
 					<i class="fas fa-sync-alt"></i> Refresh Data
 				</button>
-				
+
 				<div class="filter-wrapper mb-3">
-					<label class="form-label">Module</label>
+					<div class="d-flex justify-content-between align-items-center mb-2">
+						<label class="form-label mb-0">Module</label>
+						<button type="button" class="btn btn-sm btn-outline-secondary select-all-btn" data-target="moduleFilter">Select All</button>
+					</div>
 					<select class="form-select select2" id="moduleFilter" multiple>
 					</select>
 					<span class="filter-count" id="moduleCount"></span>
 				</div>
 
 				<div class="filter-wrapper mb-3">
-					<label class="form-label">File Name</label>
+					<div class="d-flex justify-content-between align-items-center mb-2">
+						<label class="form-label mb-0">File Name</label>
+						<button type="button" class="btn btn-sm btn-outline-secondary select-all-btn" data-target="file_nameFilter">Select All</button>
+					</div>
 					<select class="form-select select2" id="file_nameFilter" multiple>
 					</select>
 					<span class="filter-count" id="fileNameCount"></span>
 				</div>
 
 				<div class="filter-wrapper mb-3">
-					<label class="form-label">Manufacturer</label>
+					<div class="d-flex justify-content-between align-items-center mb-2">
+						<label class="form-label mb-0">Manufacturer</label>
+						<button type="button" class="btn btn-sm btn-outline-secondary select-all-btn" data-target="manFilter">Select All</button>
+					</div>
 					<select class="form-select select2" id="manFilter" multiple>
 					</select>
 					<span class="filter-count" id="manCount"></span>
 				</div>
 
 				<div class="filter-wrapper mb-3">
-					<label class="form-label">Status</label>
+					<div class="d-flex justify-content-between align-items-center mb-2">
+						<label class="form-label mb-0">Status</label>
+						<button type="button" class="btn btn-sm btn-outline-secondary select-all-btn" data-target="statusFilter">Select All</button>
+					</div>
 					<select class="form-select select2" id="statusFilter" multiple>
 					</select>
 					<span class="filter-count" id="statusCount"></span>
@@ -655,14 +667,20 @@
 				</div>-->
 
 				<div class="filter-wrapper mb-3">
-					<label class="form-label">Priority</label>
+					<div class="d-flex justify-content-between align-items-center mb-2">
+						<label class="form-label mb-0">Priority</label>
+						<button type="button" class="btn btn-sm btn-outline-secondary select-all-btn" data-target="prtyFilter">Select All</button>
+					</div>
 					<select class="form-select select2" id="prtyFilter" multiple>
 					</select>
 					<span class="filter-count" id="prtyCount"></span>
 				</div>
 
 				<div class="filter-wrapper mb-3">
-					<label class="form-label">Expiration</label>
+					<div class="d-flex justify-content-between align-items-center mb-2">
+						<label class="form-label mb-0">Expiration</label>
+						<button type="button" class="btn btn-sm btn-outline-secondary select-all-btn" data-target="is_expiredFilter">Select All</button>
+					</div>
 					<select class="form-select select2" id="is_expiredFilter" multiple>
 						<option value="true">Expired</option>
 						<option value="false">Not Expired</option>
@@ -671,14 +689,20 @@
 				</div>
 
 				<div class="filter-wrapper mb-3">
-					<label class="form-label">Table Name</label>
+					<div class="d-flex justify-content-between align-items-center mb-2">
+						<label class="form-label mb-0">Table Name</label>
+						<button type="button" class="btn btn-sm btn-outline-secondary select-all-btn" data-target="table_nameFilter">Select All</button>
+					</div>
 					<select class="form-select select2" id="table_nameFilter" multiple>
 					</select>
 					<span class="filter-count" id="table_nameCount"></span>
 				</div>
 
 				<div class="filter-wrapper mb-3">
-					<label class="form-label">Issue Modules</label>
+					<div class="d-flex justify-content-between align-items-center mb-2">
+						<label class="form-label mb-0">Issue Modules</label>
+						<button type="button" class="btn btn-sm btn-outline-secondary select-all-btn" data-target="issue_modulesFilter">Select All</button>
+					</div>
 					<select class="form-select select2" id="issue_modulesFilter" multiple>
 						<option value="true">Has Issues</option>
 						<option value="false">No Issues</option>
@@ -687,7 +711,10 @@
 				</div>
 
 				<div class="filter-wrapper mb-3">
-					<label class="form-label">Done Status</label>
+					<div class="d-flex justify-content-between align-items-center mb-2">
+						<label class="form-label mb-0">Done Status</label>
+						<button type="button" class="btn btn-sm btn-outline-secondary select-all-btn" data-target="doneFilter">Select All</button>
+					</div>
 					<select class="form-select select2" id="doneFilter" multiple>
 						<option value="1">Done</option>
 						<option value="0">Not Done</option>
@@ -706,7 +733,7 @@
 					</div>
 				</div>
 
-				
+
 			</div>
 
 			<!-- Right Column - Visualizations -->
@@ -983,7 +1010,7 @@
 			</div>
 		</div>
 
-		
+
 		<!-- Module Distribution and Timeline Charts Row -->
 		<div class="row mt-4">
 			<!-- Module Distribution Chart -->
@@ -1096,8 +1123,8 @@
 					</div>
 				</div>
 			</div>
-		
-		
+
+
 		</div>
 		<!-- File Statistics Table -->
 		<iframe title="Crawler_Trends" width="1140" height="541.25" src="https://app.powerbi.com/reportEmbed?reportId=1707dd29-bef5-48e0-a05a-c42dab3bd84d&autoAuth=true&ctid=0beb0c35-9cbb-4feb-99e5-589e415c7944" frameborder="0" allowFullScreen="false"></iframe>
@@ -1137,7 +1164,7 @@
 			if (!data.timeline) return;
 
 			const timelineData = processTimelineData(data.timeline, currentGranularity);
-			
+
 			const trace = {
 				x: timelineData.dates,
 				y: timelineData.counts,
@@ -1150,12 +1177,12 @@
 			const layout = {
 				...commonLayout,
 				title: { text: `Timeline (by ${currentGranularity})`, font: { size: 16 } },
-				xaxis: { 
+				xaxis: {
 					title: 'Date',
 					tickangle: -45,
 					automargin: true
 				},
-				yaxis: { 
+				yaxis: {
 					title: 'Count',
 					rangemode: 'tozero'
 				},
@@ -1165,13 +1192,13 @@
 			const tooltip = document.getElementById('tooltip'); // Tooltip div
 
 			Plotly.newPlot(chartDiv, [trace], layout, commonConfig).then(function() {
-				
+
 				chartDiv.on('plotly_hover', function(eventData) {
 					if (!eventData.points.length) return;
 
 					let hoveredPoint = eventData.points[0]; // The point being hovered
 					let hoveredDate = hoveredPoint.x; // Extract date
-					
+
 					let chartContainer = chartDiv.getBoundingClientRect(); // Get chart's position on the page
 					// Convert data coordinates to screen coordinates
 					let xPixel =  100 +hoveredPoint.xaxis.l2p(new Date(hoveredPoint.x).getTime());
@@ -1299,7 +1326,7 @@
 		const CACHE_EXPIRY = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 
-		
+
 		function getCacheKey(filters) {
 			return JSON.stringify(filters);
 		}
@@ -1350,7 +1377,7 @@
 			try {
 				const response = await fetch('/api/filter-options');
 				const data = await response.json();
-				
+
 				// Store current selections
 				const currentSelections = {
 					module: $('#moduleFilter').val(),
@@ -1367,11 +1394,8 @@
 				// Initialize select2 dropdowns while preserving selections
 				const initSelect2 = (elementId, options, placeholder) => {
 					const currentVal = $(`#${elementId}`).val();
-					console.log("options: ",options)
-					console.log(`#${elementId}`)
-					console.log(currentVal)
 					$(`#${elementId}`).empty().select2({
-						
+
 						data: options.map(opt => ({ id: opt, text: opt })),
 						allowClear: true,
 
@@ -1403,7 +1427,7 @@
 						currentFilters[key] = value;
 					}
 				});
-				
+
 				// Update filter counts after restoring selections
 				updateFilterCounts();
 
@@ -1458,7 +1482,7 @@
 				let handled_data = {}
 				// Check cache first
 				const cachedData = getCachedData(currentFilters);
-				
+
 				if (cachedData) {
 					console.log('Using cached data:', cachedData); // Debug log
 					handled_data = cachedData;
@@ -1471,11 +1495,11 @@
 						},
 						body: JSON.stringify(currentFilters)
 					});
-					
+
 					if (!response.ok) {
 						throw new Error('Network response was not ok');
 					}
-					
+
 					handled_data = await response.json();
 					console.log('Fetched new data:', handled_data); // Debug log
 					setCachedData(currentFilters, handled_data);
@@ -1488,7 +1512,7 @@
 				// (your existing chart update code)
 
 				const data = handled_data
-				
+
 				// Update stats
 				$('#totalPartsCount').text(data.stats.totalParts || 0);
 				$('#expiredPartsCount').text(data.stats.expiredParts || 0);
@@ -1511,7 +1535,7 @@
 					}
 				};
 
-				
+
 
 				// Update charts with individual error handling
 				const updatePromises = [
@@ -1575,7 +1599,7 @@
 							x: sortedData.map(d => d.label.slice(0,29)),
 							y: sortedData.map(d => d.value),
 							type: 'bar',
-							marker: { 
+							marker: {
 								color: '#3498db',
 								width: 0.6  // Make bars slightly thinner
 							},
@@ -1584,13 +1608,13 @@
 						}];
 
 						updateDataTable(data);
-					
+
 						updateFileTable(data);
-					
+
 						// Create layout with fixed dimensions
 						/*const moduleLayout = {
 							...commonLayout,
-							title: { 
+							title: {
 								text: 'Module Distribution (Top 10)',
 								font: { size: 16 },
 								pad: { t: 20 }
@@ -1599,7 +1623,7 @@
 							autosize: false,
 							width: 1100,
 							height: 500,
-							xaxis: { 
+							xaxis: {
 								tickangle: -45,
 								tickfont: { size: 11 },
 								range: [-0.5, 9.5],
@@ -1612,7 +1636,7 @@
 								automargin: true,
 								showgrid: false  // Remove grid lines
 							},
-							yaxis: { 
+							yaxis: {
 								title: 'Count',
 								fixedrange: true,
 								automargin: true,
@@ -1633,7 +1657,7 @@
 						*/
 						const moduleLayout = {
     ...commonLayout,
-    title: { 
+    title: {
         text: 'Module Distribution (Top 10)',
         font: { size: 16 },
         pad: { t: 20 }
@@ -1642,7 +1666,7 @@
     autosize: false,
     //width: 1100,
     height: 500,
-    xaxis: { 
+    xaxis: {
         tickangle: -25,
         tickfont: { size: 11 },
         range: [-0.5, 9.5],
@@ -1657,7 +1681,7 @@
         ticktext: sortedData.slice(0, 10).map(d => d.label.length > 20 ? d.label.substring(0, 20) + '...' : d.label),
         tickvals: sortedData.slice(0, 10).map((_, i) => i)
     },
-    yaxis: { 
+    yaxis: {
         title: 'Count',
         fixedrange: true,
         automargin: true,
@@ -1741,39 +1765,39 @@
 
 		function updateValidationCards(data) {
 			console.log('Updating validation cards with data:', data); // Debug log
-			
+
 			if (!data || !data.validation_stats) {
 				console.error('No validation stats found in data');
 				return;
 			}
-			
+
 			const stats = data.validation_stats;
-			
+
 			try {
 				// Update Stopped Modules
 				$('#stoppedModulesCount').text(stats.stopped_modules.count || 0);
 				$('#stoppedModulesPercentage').text((stats.stopped_modules.percentage || 0) + '%');
-				
+
 				// Update Stopped Parts
 				$('#stoppedPartsCount').text(stats.stopped_parts.count || 0);
 				$('#stoppedPartsPercentage').text((stats.stopped_parts.percentage || 0) + '%');
-				
+
 				// Update Pending Modules
 				$('#pendingModulesCount').text(stats.pending_modules.count || 0);
 				$('#pendingModulesPercentage').text((stats.pending_modules.percentage || 0) + '%');
-				
+
 				// Update Pending Parts
 				$('#pendingPartsCount').text(stats.pending_parts.count || 0);
 				$('#pendingPartsPercentage').text((stats.pending_parts.percentage || 0) + '%');
-				
+
 				// Update Direct Feed
 				$('#directFeedCount').text(stats.direct_feed_modules.count || 0);
 				$('#directFeedPercentage').text((stats.direct_feed_modules.percentage || 0) + '%');
-				
+
 				// Update File Status
 				$('#fileStatus').text(stats.file_status || '-');
 				$('#criticalPercentage').text((stats.total_critical_percentage || 0) + '%');
-				
+
 				// Update File Status Card color based on status
 				const fileStatusCard = document.getElementById('fileStatusCard');
 				if (stats.file_status === 'Rejected') {
@@ -1781,7 +1805,7 @@
 				} else {
 					fileStatusCard.style.background = 'linear-gradient(45deg, #00C853, #69F0AE)';
 				}
-				
+
 				console.log('Validation cards updated successfully');
 			} catch (error) {
 				console.error('Error updating validation cards:', error);
@@ -1829,12 +1853,58 @@
 			loadFilterOptions();
 			updateCharts();
 
+			// Add event handler for the "Select All" buttons
+			$(document).on('click', '.select-all-btn', function() {
+				const targetId = $(this).data('target');
+				const $select = $(`#${targetId}`);
+				const $button = $(this);
+
+				// Get all options except "Select All"
+				const allOptions = $select.find('option').map(function() {
+					return $(this).val();
+				}).get().filter(val => val !== 'Select All' && val !== 'Deselect All');
+
+				// Check if all options are already selected
+				const currentValues = $select.val() || [];
+				const allSelected = allOptions.length === currentValues.filter(val => val !== 'Select All' && val !== 'Deselect All').length;
+
+				if (allSelected) {
+					// Deselect all
+					$select.val([]).trigger('change');
+					$button.text('Select All');
+				} else {
+					// Select all
+					$select.val(allOptions).trigger('change');
+					$button.text('Deselect All');
+				}
+			});
+
+			// Update the select2 change handler to also update the button text
+			$('.select2').on('change.updateButton', function() {
+				const filterId = this.id;
+				const $button = $(`.select-all-btn[data-target="${filterId}"]`);
+				const $select = $(this);
+
+				// Get all options except "Select All"
+				const allOptions = $select.find('option').map(function() {
+					return $(this).val();
+				}).get().filter(val => val !== 'Select All' && val !== 'Deselect All');
+
+				// Check if all options are selected
+				const currentValues = $select.val() || [];
+				const allSelected = allOptions.length > 0 &&
+					allOptions.length === currentValues.filter(val => val !== 'Select All' && val !== 'Deselect All').length;
+
+				// Update button text
+				$button.text(allSelected ? 'Deselect All' : 'Select All');
+			});
+
 			// Add handler for granularity buttons
 			$('.btn-group [data-granularity]').click(function() {
 				$('.btn-group [data-granularity]').removeClass('active');
 				$(this).addClass('active');
 				currentGranularity = $(this).data('granularity');
-				
+
 				// Get the cached data or fetch new data
 				const cachedData = getCachedData(currentFilters);
 				if (cachedData) {
@@ -1869,13 +1939,13 @@
 			$('#startIndex, #endIndex').on('change', function() {
 				const startIndex = $('#startIndex').val();
 				const endIndex = $('#endIndex').val();
-				
+
 				if (startIndex && endIndex && parseInt(startIndex) > parseInt(endIndex)) {
 					showNotification('Start index cannot be greater than end index', 'warning');
 					$(this).val('');
 					return;
 				}
-				
+
 				currentFilters.startIndex = startIndex ? parseInt(startIndex) : null;
 				currentFilters.endIndex = endIndex ? parseInt(endIndex) : null;
 				updateCharts();
@@ -1891,15 +1961,19 @@
 			$('#clearFilters').click(async function() {
 				// Clear all select2 dropdowns
 				$('.select2').each(function() {
+					// Reset the "Select All" button text
+					const filterId = this.id;
+					$(`.select-all-btn[data-target="${filterId}"]`).text('Select All');
+
 					$(this).val(null).trigger('change');
 				});
 
 				// Clear date inputs
 				$('#startDate, #endDate').val('');
-				
+
 				// Clear index inputs
 				$('#startIndex, #endIndex').val('');
-				
+
 				// Reset current filters object
 				currentFilters = {
 					module: [],
@@ -1919,10 +1993,10 @@
 
 				// Clear filter counts
 				$('.filter-count').hide();
-				
+
 				// Reload filter options to reset dropdowns
 				await loadFilterOptions();
-				
+
 				// Update charts with cleared filters
 				updateCharts();
 			});
@@ -1939,14 +2013,14 @@
 					if (!response.ok) {
 						throw new Error('Failed to update data');
 					}
-					
+
 					// Clear the cache
 					clearCache();
-					
+
 					// Update charts with fresh data
 					await loadFilterOptions();
 					await updateCharts();
-					
+
 					showNotification('Data refreshed successfully', 'success');
 				} catch (error) {
 					console.error('Error refreshing data:', error);
@@ -1980,9 +2054,9 @@
 			});
 		});
 		function updateDataTable(data) {
-			
+
 			if (!data || !data.tableData) return;
-			
+
 			tableData = data.tableData;
 			renderTable();
 		}
@@ -2181,22 +2255,22 @@ function downloadChartData(chartType) {
 
     switch(chartType) {
         case 'status':
-            csvContent = 'Status,Count\n' + 
-                data.status.labels.map((label, i) => 
+            csvContent = 'Status,Count\n' +
+                data.status.labels.map((label, i) =>
                     `${label},${data.status.values[i]}`).join('\n');
             filename = 'status_distribution.csv';
             break;
 
         case 'expired':
-            csvContent = 'Status,Count\n' + 
-                data.isExpired.labels.map((label, i) => 
+            csvContent = 'Status,Count\n' +
+                data.isExpired.labels.map((label, i) =>
                     `${label},${data.isExpired.values[i]}`).join('\n');
             filename = 'expiration_status.csv';
             break;
 
         case 'tableName':
-            csvContent = 'Table Name,Count\n' + 
-                data.table_name.labels.map((label, i) => 
+            csvContent = 'Table Name,Count\n' +
+                data.table_name.labels.map((label, i) =>
                     `${label},${data.table_name.values[i]}`).join('\n');
             filename = 'table_name_distribution.csv';
             break;
@@ -2208,7 +2282,7 @@ function downloadChartData(chartType) {
                 value: data.team.values[i]
             })).sort((a, b) => b.value - a.value);
 
-            csvContent = 'Module,Count\n' + 
+            csvContent = 'Module,Count\n' +
                 moduleData.map(item => `${item.label},${item.value}`).join('\n');
             filename = 'module_distribution.csv';
             break;
@@ -2216,8 +2290,8 @@ function downloadChartData(chartType) {
         case 'timeline':
             if (data.timeline) {
                 const processedData = processTimelineData(data.timeline, currentGranularity);
-                csvContent = 'Date,Count\n' + 
-                    processedData.dates.map((date, i) => 
+                csvContent = 'Date,Count\n' +
+                    processedData.dates.map((date, i) =>
                         `${date},${processedData.counts[i]}`).join('\n');
                 filename = 'timeline_data.csv';
             }
@@ -2234,7 +2308,7 @@ function downloadChartData(chartType) {
                 'Found Percentage',
                 'Done Percentage'
             ];
-            
+
             csvContent = fileHeaders.join(',') + '\n';
             data.fileStats.forEach(row => {
                 csvContent += `${row.file},${row.total_count},${row.error_count},` +
@@ -2258,7 +2332,7 @@ function downloadChartData(chartType) {
                 'Found Percentage',
                 'Expired Count'
             ];
-            
+
             csvContent = moduleHeaders.join(',') + '\n';
             data.moduleStats.forEach(row => {
                 csvContent += `${row.module},${row.Running_Status},${row.matrix_status},` +
@@ -2305,7 +2379,7 @@ $('#uploadFilteredToAmazon').click(async function() {
         isAmazonUploading = true;
         const button = $(this);
         const originalText = button.html();
-        
+
         // Update button state
         button.prop('disabled', true);
         button.html('<i class="fas fa-sync fa-spin"></i> Uploading...');
@@ -2320,7 +2394,7 @@ $('#uploadFilteredToAmazon').click(async function() {
         });
 
         const result = await response.json();
-        
+
         if (response.ok) {
             showNotification('Filtered data uploaded to Amazon successfully', 'success');
         } else {
