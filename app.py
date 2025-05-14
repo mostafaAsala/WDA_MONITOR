@@ -43,6 +43,8 @@ import os
 from datetime import datetime
 import zipfile
 import glob
+import pickle
+
 class SafeRotatingFileHandler(RotatingFileHandler):
 	def doRollover(self):
 		"""
@@ -167,7 +169,7 @@ def load_data():
 			module_id=('module_id', 'first'),  # First value of module_id
 			wda_flag=('wda_flag', 'first')  # First value of wda_flag
 		).reset_index()
-		
+
 		grouped_data['upload_date'] = pd.to_datetime(grouped_data['upload_date'])
 		grouped_data['last_run_date'] = pd.to_datetime(grouped_data['last_run_date'])
 
@@ -215,6 +217,18 @@ app = create_app()
 # Global dictionary to track file processing status
 file_status = {}
 
+# Path to store scheduled files
+SCHEDULED_FILES_PATH = os.path.join(Config.result_path, 'scheduled_files.pkl')
+
+# Load scheduled files if exists
+scheduled_files = []
+if os.path.exists(SCHEDULED_FILES_PATH):
+    try:
+        with open(SCHEDULED_FILES_PATH, 'rb') as f:
+            scheduled_files = pickle.load(f)
+    except Exception as e:
+        app.logger.error(f'Error loading scheduled files: {str(e)}')
+
 @app.route('/get-file-status', methods=['GET'])
 def get_file_status():
 	return jsonify(file_status)
@@ -257,7 +271,7 @@ def index():
 		app.logger.error(f'Error getting database files: {str(e)}')
 		db_files = []
 
-	return render_template('index.html', files=files, db_files=db_files, today=today)
+	return render_template('index.html', files=files, db_files=db_files, today=today, scheduled_files=scheduled_files)
 
 @app.route('/update-data', methods=['GET'])
 def update_data():
@@ -421,6 +435,49 @@ def refresh_files():
 		app.logger.error(f'Error refreshing files: {str(e)}')
 		return jsonify({'error': str(e)}), 500
 
+
+@app.route('/get-scheduled-files', methods=['GET'])
+def get_scheduled_files():
+	try:
+		app.logger.info('Getting scheduled files')
+		return jsonify({
+			'status': 'success',
+			'files': scheduled_files
+		})
+	except Exception as e:
+		app.logger.error(f'Error getting scheduled files: {str(e)}')
+		return jsonify({'error': str(e)}), 500
+
+@app.route('/update-schedule-upload', methods=['POST'])
+def update_schedule_upload():
+	global scheduled_files
+	try:
+		data = request.json
+		file_name = data.get('file_name')
+		scheduled = data.get('scheduled')
+
+		if not file_name:
+			return jsonify({'status': 'error', 'error': 'File name is required'}), 400
+
+		app.logger.info(f'{"Adding" if scheduled else "Removing"} {file_name} from scheduled uploads')
+
+		if scheduled and file_name not in scheduled_files:
+			scheduled_files.append(file_name)
+		elif not scheduled and file_name in scheduled_files:
+			scheduled_files.remove(file_name)
+
+		# Save updated scheduled files
+		with open(SCHEDULED_FILES_PATH, 'wb') as f:
+			pickle.dump(scheduled_files, f)
+
+		return jsonify({
+			'status': 'success',
+			'message': f'Successfully {"scheduled" if scheduled else "unscheduled"} {file_name}'
+		})
+	except Exception as e:
+		app.logger.error(f'Error updating scheduled uploads: {str(e)}')
+		return jsonify({'status': 'error', 'error': str(e)}), 500
+
 @app.route('/download', methods=['POST'])
 def download_results():
 	selected_files = request.json.get('files', [])
@@ -519,9 +576,9 @@ def get_chart_data():
 				3: "schedule Running",
 				4: "schedule Running"
 			}
-			
+
 			df['running_status'] = df['wda_flag'].map(lambda x: number_to_string.get(int(x), "Unknown"))
-			
+
 			df = df[df['running_status'].isin(filters['running_status'])]
 		if filters.get('direct_feed') and len(filters.get('direct_feed'))>0:
 			# Get direct feed status from the module_stats calculation
@@ -777,7 +834,7 @@ def Get_filtered_data(df, filters):
 		start_idx = int(filters['startIndex'])
 		end_idx = int(filters['endIndex'])
 		print(start_idx, end_idx)
-		if start_idx <= end_idx and start_idx >= 0 and end_idx < len(df):
+		if start_idx <= end_idx and start_idx >= 0:# and end_idx <= len(df):
 			df = df.iloc[start_idx:end_idx + 1]  # +1 because slice is exclusive of end
 			print("filtered")
 
@@ -853,6 +910,11 @@ def update_stop_date():
 	except Exception as e:
 		app.logger.error(f'Error updating stop monitor date: {str(e)}')
 		return jsonify({'error': str(e)}), 500
+
+
+
+
+
 
 @app.route('/get-db-files')
 def get_db_files():
@@ -1155,11 +1217,68 @@ def download_not_approved():
 
 def daily_task():
 	daily_check_all()
+
 # Config for APScheduler
 def download_matrix_task():
 	global matrix_df
 	download_matrix_toFile()
 	matrix_df = pd.read_csv(r'Static Data\matrix.csv')
+
+def weekly_scheduled_upload_task():
+	"""
+	Weekly task to upload expired parts from scheduled files to Amazon
+	"""
+	global amazon_upload_in_progress, scheduled_files
+
+	app.logger.info(f'Running weekly scheduled upload for {len(scheduled_files)} files')
+
+	if not scheduled_files:
+		app.logger.info('No files scheduled for upload')
+		return
+
+	if amazon_upload_in_progress:
+		app.logger.warning('Another upload to Amazon is in progress. Skipping scheduled upload.')
+		return
+
+	try:
+		with amazon_upload_lock:
+			amazon_upload_in_progress = True
+
+			for filename in scheduled_files:
+				try:
+					app.logger.info(f'Processing scheduled upload for {filename}')
+					file_path = os.path.join(Config.WORK_FOLDER, filename)
+
+					if not os.path.exists(file_path):
+						app.logger.warning(f'Scheduled file not found: {filename}')
+						continue
+
+					# Get only expired parts
+					df = pd.read_csv(file_path, sep='\t')
+					today = datetime.now().date()
+
+					# Filter for expired parts
+					df_filtered = df[df['stop_monitor_date'].notna()]
+					df_filtered['stop_monitor_date'] = pd.to_datetime(df_filtered['stop_monitor_date']).dt.date
+					df_expired = df_filtered[df_filtered['stop_monitor_date'] < today]
+
+					if df_expired.empty:
+						app.logger.info(f'No expired parts found in {filename}')
+						continue
+
+					# Upload to Amazon
+					timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+					upload_filename = f'{filename}_expired_{timestamp}'
+					upload_file_to_amazon(df_expired, upload_filename)
+					app.logger.info(f'Successfully uploaded expired parts from {filename} to Amazon')
+
+				except Exception as e:
+					app.logger.error(f'Error processing scheduled upload for {filename}: {str(e)}')
+
+	except Exception as e:
+		app.logger.error(f'Error in weekly scheduled upload task: {str(e)}')
+	finally:
+		amazon_upload_in_progress = False
 # 🔹 Define TaskConfig
 class TaskConfig:
     SCHEDULER_API_ENABLED = True
@@ -1185,6 +1304,14 @@ class TaskConfig:
             'func': 'app:download_matrix_task',  # Function to run
             'trigger': 'cron',
             'hour': 7,
+            'minute': 0
+        },
+        {
+            'id': 'weekly_scheduled_upload',  # Unique Job ID
+            'func': 'app:weekly_scheduled_upload_task',  # Function to run
+            'trigger': 'cron',
+            'day_of_week': 'fri',  # Run every Monday
+            'hour': 3,  # At 3 AM
             'minute': 0
         }
     ]
@@ -1243,7 +1370,7 @@ def upload_filtered_to_amazon():
             df = global_df.copy()
             df = Get_filtered_data(df , filters)
             # Apply filters
-            
+
             # Generate a unique filename for the filtered data
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f'filtered_data_{timestamp}.csv'
