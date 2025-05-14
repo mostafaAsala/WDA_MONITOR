@@ -828,7 +828,7 @@ def Get_filtered_data(df, filters):
 			axis=1
 		)
 		df = df_with_direct_feed[df_with_direct_feed['direct_feed'].isin([int(x) for x in filters['direct_feed']])]
-
+   
 	# Apply index range filter last
 	if filters.get('startIndex') is not None and filters.get('endIndex') is not None:
 		start_idx = int(filters['startIndex'])
