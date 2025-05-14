@@ -839,7 +839,7 @@ def Get_filtered_data(df, filters):
 			print("filtered")
 
 	return df
-
+ 
 @app.route('/api/download-filtered', methods=['POST'])
 def download_filtered():
 	try:
