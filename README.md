@@ -16,6 +16,15 @@ WDA Monitor is a Flask-based web application designed to track the status of par
 - **Amazon Integration**: Upload filtered data to Amazon
 - **Export Capabilities**: Download results and reports
 
+### sample Images
+> main page
+![Main Page](https://github.com/user-attachments/assets/f84cea16-564d-4574-bafc-3a134587bf80)
+> analysis page
+![analysis page](https://github.com/user-attachments/assets/bc457060-dd79-4322-bf9c-8f1e6da5f49f)
+> import status page
+![import status page](https://github.com/user-attachments/assets/b1dd67ea-e85a-496f-b9c3-0136b46b737f)
+
+
 ## Project Structure
 
 - **app.py**: Main Flask application entry point
