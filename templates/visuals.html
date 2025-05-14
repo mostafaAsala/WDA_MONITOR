@@ -723,6 +723,32 @@
 				</div>
 
 				<div class="filter-wrapper mb-3">
+					<div class="d-flex justify-content-between align-items-center mb-2">
+						<label class="form-label mb-0">Running Status</label>
+						<button type="button" class="btn btn-sm btn-outline-secondary select-all-btn" data-target="running_statusFilter">Select All</button>
+					</div>
+					<select class="form-select select2" id="running_statusFilter" multiple>
+						<option value="Stopped">Stopped</option>
+						<option value="Regular Running">Regular Running</option>
+						<option value="Run By Request">Run By Request</option>
+						<option value="schedule Running">Schedule Running</option>
+					</select>
+					<span class="filter-count" id="running_statusCount"></span>
+				</div>
+
+				<div class="filter-wrapper mb-3">
+					<div class="d-flex justify-content-between align-items-center mb-2">
+						<label class="form-label mb-0">Direct Feed</label>
+						<button type="button" class="btn btn-sm btn-outline-secondary select-all-btn" data-target="direct_feedFilter">Select All</button>
+					</div>
+					<select class="form-select select2" id="direct_feedFilter" multiple>
+						<option value="1">Yes</option>
+						<option value="0">No</option>
+					</select>
+					<span class="filter-count" id="direct_feedCount"></span>
+				</div>
+
+				<div class="filter-wrapper mb-3">
 					<label class="form-label">Date Range</label>
 					<div class="input-group">
 						<input type="date" class="form-control" id="startDate">
@@ -886,8 +912,8 @@
 						<div class="d-flex justify-content-between align-items-center">
 							<div>
 								<h6 class="card-subtitle mb-2">Direct Feed</h6>
-								<h2 class="card-title mb-0" id="directFeedCount">0</h2>
-								<small class="text-white" id="directFeedPercentage">0%</small>
+								<h2 class="card-title mb-0" id="direct_feedCount">0</h2>
+								<small class="text-white" id="direct_feedPercentage">0%</small>
 							</div>
 							<i class="fas fa-database stat-icon"></i>
 						</div>
@@ -1101,7 +1127,7 @@
 							<thead>
 								<tr>
 									<th data-sort="module">Module <span class="sort-icon">↕</span></th>
-									<th data-sort="Running_Status">Running Status <span class="sort-icon">↕</span></th>
+									<th data-sort="running_status">Running Status <span class="sort-icon">↕</span></th>
 									<th data-sort="matrix_status">Matrix Status <span class="sort-icon">↕</span></th>
 									<th data-sort="matrix_comment">Matrix comment <span class="sort-icon">↕</span></th>
 									<th data-sort="matrix_old">Matrix old <span class="sort-icon">↕</span></th>
@@ -1310,11 +1336,13 @@
 			is_expired: [],
 			table_name: [],
 			issue_modules: [],
-			done: [],      // Add this line
+			done: [],
+			running_status: [],  // Added for Running Status filter
+			direct_feed: [],     // Added for Direct Feed filter
 			startDate: '',
 			endDate: '',
-			startIndex: null,  // Add this line
-			endIndex: null     // Add this line
+			startIndex: null,
+			endIndex: null
 		};
 		// Data Table functionality
 		let tableData = [];
@@ -1388,7 +1416,9 @@
 					table_name: $('#table_nameFilter').val(),
 					is_expired: $('#is_expiredFilter').val(),
 					issue_modules: $('#issue_modulesFilter').val(),
-					done: $('#doneFilter').val()
+					done: $('#doneFilter').val(),
+					running_status: $('#running_statusFilter').val(),
+					direct_feed: $('#direct_feedFilter').val()
 				};
 
 				// Initialize select2 dropdowns while preserving selections
@@ -1419,6 +1449,8 @@
 				initSelect2('is_expiredFilter', ['true', 'false'], 'Select expiration status');
 				initSelect2('issue_modulesFilter', ['true', 'false'], 'Select issue status');
 				initSelect2('doneFilter', ['1', '0'], 'Select done status');
+				initSelect2('running_statusFilter', data.running_status || ['Stopped', 'Regular Running', 'Run By Request', 'schedule Running'], 'Select running status');
+				initSelect2('direct_feedFilter', ['1', '0'], 'Select direct feed status');
 
 				// Restore all selections and update filter counts
 				Object.entries(currentSelections).forEach(([key, value]) => {
@@ -1791,8 +1823,8 @@
 				$('#pendingPartsPercentage').text((stats.pending_parts.percentage || 0) + '%');
 
 				// Update Direct Feed
-				$('#directFeedCount').text(stats.direct_feed_modules.count || 0);
-				$('#directFeedPercentage').text((stats.direct_feed_modules.percentage || 0) + '%');
+				$('#direct_feedCount').text(stats.direct_feed_modules.count || 0);
+				$('#direct_feedPercentage').text((stats.direct_feed_modules.percentage || 0) + '%');
 
 				// Update File Status
 				$('#fileStatus').text(stats.file_status || '-');
@@ -1985,6 +2017,8 @@
 					table_name: [],
 					issue_modules: [],
 					done: [],
+					running_status: [],  // Added for Running Status filter
+					direct_feed: [],     // Added for Direct Feed filter
 					startDate: '',
 					endDate: '',
 					startIndex: null,
@@ -2087,7 +2121,7 @@
 				const tr = document.createElement('tr');
 				tr.innerHTML = `
 					<td>${row.module || ''}</td>
-					<td>${row.Running_Status || ''}</td>
+					<td>${row.running_status || ''}</td>
 					<td>${row.matrix_status || ''}</td>
 					<td>${row.matrix_comment || ''}</td>
 					<td>${row.matrix_old || ''}</td>
@@ -2335,7 +2369,7 @@ function downloadChartData(chartType) {
 
             csvContent = moduleHeaders.join(',') + '\n';
             data.moduleStats.forEach(row => {
-                csvContent += `${row.module},${row.Running_Status},${row.matrix_status},` +
+                csvContent += `${row.module},${row.running_status},${row.matrix_status},` +
                     `${row.matrix_comment},${row.matrix_old},${row.direct_feed_status},${row.total_count},` +
                     `${row.error_count},${row.error_percentage},${row.found_count},` +
                     `${row.found_percentage},${row.expired_count}\n`;

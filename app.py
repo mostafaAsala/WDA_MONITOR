@@ -117,7 +117,7 @@ filtered_data = None
 
 def load_module_data():
 	#load data from matrix man- module- running status - comment - old
-	#load direct Feed suppliers 
+	#load direct Feed suppliers
 	#load man module table
 	pass
 
@@ -129,33 +129,34 @@ def load_data():
 		global_df['status'] = global_df['status'].astype(str)
 		global_df['status'].fillna('-',inplace=True)
 		global_df['status_orig'] = global_df['status'].copy()
-		global_df['status'] = global_df['status'].apply(lambda x: 
+		global_df['status'] = global_df['status'].apply(lambda x:
 			'WDA' if str(x) in ['Output Pattern not found','Link Step have no links','Error in loading page :404'] else
 			'Not Found' if 'Not Found' in str(x) else
 			'found' if 'found' in str(x) else
 			'Proxy' if 'Error' in str(x) or 'Incomplete' in str(x) else
 			'SW' if any(err in str(x) for err in [ 'Exception','java']) else
 			'-' if '-' in str(x) else
-			'not assigned'
+			'not run' if str(x)=='' or  str(x)=='nan'  else
+			'not assigned error'
 		)
-		
-		global_df['upload_date'] = pd.to_datetime(global_df['upload_date'])  
-		global_df['last_run_date'] = pd.to_datetime(global_df['last_run_date'])  
-		
+
+		global_df['upload_date'] = pd.to_datetime(global_df['upload_date'])
+		global_df['last_run_date'] = pd.to_datetime(global_df['last_run_date'])
+
 		global_df['done'] = global_df['last_run_date']>=(global_df['upload_date']- pd.Timedelta(days=1))
-		
+
 		global_df['prty'].fillna('-',inplace=True)
 		global_df['table_name'].fillna('-',inplace=True)
-		
+
 		grouped_data = global_df.groupby(
-    ['man', 'module', 'file_id', 'status', 'last_run_date', 
+    ['man', 'module', 'file_id', 'status', 'last_run_date',
      'table_name', 'prty', 'file_name', 'is_expired'], dropna=False
 		).size().reset_index(name='count')
 		# Rename the count column
 		grouped_data.rename(columns={'id': 'count'}, inplace=True)
 
 		grouped_data = global_df.groupby(
-			['man', 'module', 'file_id', 'status', 'last_run_date', 
+			['man', 'module', 'file_id', 'status', 'last_run_date',
 			'table_name', 'prty', 'file_name', 'is_expired'], dropna=False
 		).agg(
 			count=('part', 'size'),  # Count the number of rows
@@ -166,10 +167,12 @@ def load_data():
 			module_id=('module_id', 'first'),  # First value of module_id
 			wda_flag=('wda_flag', 'first')  # First value of wda_flag
 		).reset_index()
-		grouped_data['upload_date'] = pd.to_datetime(grouped_data['upload_date'])  
-		grouped_data['last_run_date'] = pd.to_datetime(grouped_data['last_run_date'])  
 		
+		grouped_data['upload_date'] = pd.to_datetime(grouped_data['upload_date'])
+		grouped_data['last_run_date'] = pd.to_datetime(grouped_data['last_run_date'])
+
 		grouped_data['done'] = grouped_data['last_run_date']>=(grouped_data['upload_date']- pd.Timedelta(days=1))
+		print(grouped_data.columns)
 		print(grouped_data)
 		print("Length of data: ",len(global_df), len(grouped_data), grouped_data['count'].sum())
 		return True
@@ -239,12 +242,12 @@ def index():
 	app.logger.info('Accessing index page')
 	files = os.listdir(Config.WORK_FOLDER)
 	today = datetime.now().date()
-	
+
 	# Get database files info
 	try:
 		from check_status import get_files
 		db_files_df = get_files()
-		
+
 		print(db_files_df)
 		if db_files_df is not None:
 			db_files = db_files_df.to_dict('records')
@@ -253,7 +256,7 @@ def index():
 	except Exception as e:
 		app.logger.error(f'Error getting database files: {str(e)}')
 		db_files = []
-	
+
 	return render_template('index.html', files=files, db_files=db_files, today=today)
 
 @app.route('/update-data', methods=['GET'])
@@ -283,19 +286,19 @@ def upload_file():
 	if 'file' not in request.files:
 		app.logger.error('No file part in request')
 		return jsonify({'error': 'No file part'}), 400
-	
+
 	file = request.files['file']
 	if file.filename == '':
 		app.logger.error('No selected file')
 		return jsonify({'error': 'No selected file'}), 400
-	
+
 	if file:
 		filename = secure_filename(file.filename)
 		base_name = os.path.splitext(filename)[0]
 		date_str = datetime.now().date()
 		new_filename = f"{base_name}@{date_str}.txt"
 		file_path = os.path.join(Config.WORK_FOLDER, new_filename)
-		
+
 		try:
 			file.save(file_path)
 			app.logger.info(f'File saved: {new_filename}')
@@ -324,11 +327,11 @@ def upload_to_amazon():
     filename = request.json.get('file_name')
     if not filename:
         return jsonify({'error': 'Filename is required'}), 400
-    
+
     # Check if another upload is in progress
     if amazon_upload_in_progress:
         return jsonify({'error': 'Another upload to Amazon is in progress. Please wait.'}), 429
-    
+
     try:
         with amazon_upload_lock:
             amazon_upload_in_progress = True
@@ -346,32 +349,32 @@ def upload_to_amazon():
 def check_status():
 	selected_files = request.json.get('files', [])
 	ignore_date = request.json.get('ignore_date', True)
-	
+
 	try:
 		app.logger.info(f'Checking status for files: {selected_files}')
-		
+
 		# Update status to In Progress
 		for file in selected_files:
 			file_status[file] = 'In Progress'
-		
+
 		with status_lock:  # Ensure only one status check at a time
 			files_string, daily_export = Get_status(selected_files, ignore_date)
 			df, file_name  = Download_results(files_string, daily_export)
 			# Use file lock when writing results
 			with file_lock:
 				status_stats = get_status_statistics(df)
-				
+
 			# Reset status to Idle
 			for file in selected_files:
 				file_status[file] = 'Idle'
-				
+
 			app.logger.info('Status check completed successfully')
 			return_object = jsonify({
-				'status': 'Success', 
+				'status': 'Success',
 				'message': 'Status updated successfully',
 				'data': status_stats
 			})
-			
+
 			return return_object
 	except Exception as e:
 		# Reset status on error
@@ -383,21 +386,21 @@ def check_status():
 @app.route('/check-valid-parts', methods=['POST'])
 def check_valid_parts():
 	selected_files = request.json.get('files', [])
-	
+
 	try:
 		app.logger.info(f'Checking valid parts for files: {selected_files}')
-		
+
 		with status_lock:  # Ensure only one check at a time
 			from check_status import check_valid_file
 			result = check_valid_file(selected_files)
-			
+
 			app.logger.info('Valid parts check completed successfully')
 			return jsonify({
-				'status': 'Success', 
+				'status': 'Success',
 				'message': 'Valid parts check completed successfully',
 				'data': result
 			})
-			
+
 	except Exception as e:
 		app.logger.error(f'Error checking valid parts: {str(e)}')
 		return jsonify({'error': str(e)}), 500
@@ -407,12 +410,12 @@ def refresh_files():
 	try:
 		app.logger.info('Refreshing files list')
 		files = os.listdir(Config.WORK_FOLDER)
-		
+
 		files_status = jsonify({
 			'status': 'Success',
 			'files': files
 		})
-		
+
 		return files_status
 	except Exception as e:
 		app.logger.error(f'Error refreshing files: {str(e)}')
@@ -458,7 +461,8 @@ def get_filter_options():
 			'projects': sorted(grouped_data['file_name'].unique().tolist()),
 			'manufacturers': sorted(grouped_data[grouped_data['man'].notna()]['man'].unique().tolist()),
 			'priorities': sorted(grouped_data['prty'].astype(str).unique().tolist()),
-			'table_name': sorted(grouped_data[grouped_data['table_name'].notna()]['table_name'].unique().tolist())
+			'table_name': sorted(grouped_data[grouped_data['table_name'].notna()]['table_name'].unique().tolist()),
+			'running_status': ['Stopped', 'Regular Running', 'Run By Request', 'schedule Running']
 		}
 		filter_options = jsonify(filers_dict)
 		print(filter_options)
@@ -466,7 +470,7 @@ def get_filter_options():
 
 	except Exception as e:
 		app.logger.error(f'Error fetching filter options: {str(traceback.format_exc())}')
-		
+
 		return jsonify({'error': str(e)}), 500
 
 @app.route('/api/chart-data', methods=['GET','POST'])
@@ -476,36 +480,57 @@ def get_chart_data():
 		app.logger.info('Fetching chart data')
 		if grouped_data is None:
 			load_data()
-			
+
 		df = grouped_data.copy()
-		
+
 		# Apply filters
 		filters = request.json
-		
-		if filters.get('module'):
+		print(filters)
+		if filters.get('module') and len(filters.get('module'))>0 :
 			df = df[df['module'].isin(filters['module'])]
-		if filters.get('file_name'):
+		if filters.get('file_name') and len(filters.get('file_name'))>0:
 			df = df[df['file_name'].isin(filters['file_name'])]
-		if filters.get('man'):
+		if filters.get('man') and len(filters.get('man'))>0:
 			df = df[df['man'].isin(filters['man'])]
-		if filters.get('status'):
+		if filters.get('status') and len(filters.get('status'))>0:
 			stfilter =  filters['status']
 			df = df[df['status'].isin(stfilter) ]
-		if filters.get('prty'):
+		if filters.get('prty') and len(filters.get('prty'))>0:
 			ptfilters = filters['prty']
 			df = df[df['prty'].isin(ptfilters) ]
-		if filters.get('is_expired'):
+		if filters.get('is_expired') and len(filters.get('is_expired'))>0:
 			df = df[df['is_expired'].isin([x.lower() == 'true' for x in filters['is_expired']])]
-		if filters.get('table_name'):
+		if filters.get('table_name') and len(filters.get('table_name'))>0:
 			df = df[df['table_name'].isin(filters['table_name'])]
-		if filters.get('issue_modules'):
+		if filters.get('issue_modules') and len(filters.get('issue_modules'))>0:
 			df = df[df['issue_modules'].isin([x.lower() == 'true' for x in filters['issue_modules']])]
-		if filters.get('startDate') and filters.get('endDate'):
+		if filters.get('startDate') and filters.get('endDate') :
 			df['last_run_date'] = pd.to_datetime(df['last_run_date'])
-			df = df[(df['last_run_date'] >= filters['startDate']) & 
+			df = df[(df['last_run_date'] >= filters['startDate']) &
 				   (df['last_run_date'] <= filters['endDate'])]
-		if filters.get('done'):
+		if filters.get('done') and len(filters.get('done'))>0:
 			df = df[df['done'].isin([int(x) for x in filters['done']])]
+		if filters.get('running_status') and len(filters.get('running_status'))>0:
+			# Convert wda_flag to running status string
+			number_to_string = {
+				0: "Stopped",
+				1: "Regular Running",
+				2: "Run By Request",
+				3: "schedule Running",
+				4: "schedule Running"
+			}
+			
+			df['running_status'] = df['wda_flag'].map(lambda x: number_to_string.get(int(x), "Unknown"))
+			
+			df = df[df['running_status'].isin(filters['running_status'])]
+		if filters.get('direct_feed') and len(filters.get('direct_feed'))>0:
+			# Get direct feed status from the module_stats calculation
+			df_with_direct_feed = df.copy()
+			df_with_direct_feed['direct_feed'] = df_with_direct_feed.apply(
+				lambda row: 1 if row['man'] in direct_feed[direct_feed['Direct Feed'] == 1]['Supplier'].values else 0,
+				axis=1
+			)
+			df = df_with_direct_feed[df_with_direct_feed['direct_feed'].isin([int(x) for x in filters['direct_feed']])]
 		filtered_data = df
 		# Calculate statistics using count column and convert to native Python types
 		stats = {
@@ -516,12 +541,12 @@ def get_chart_data():
 			'missingParts': int(df[df['table_name'] == 'not run']['count'].sum()),
 			'moduleCount': len(df['module'].unique())
 		}
-		
+
 		# Prepare chart data with modified status and convert to native Python types
 		status_counts = df.groupby('status')['count'].sum()
 		module_counts = df.groupby('module')['count'].sum()
 		table_name_counts = df.groupby('table_name')['count'].sum()
-		
+
 		# Add timeline data
 		df['last_run_date'] = pd.to_datetime(df['last_run_date'])
 		timeline_data = df.groupby('last_run_date')['count'].sum().reset_index()
@@ -548,7 +573,7 @@ def get_chart_data():
 				4: 'schedule Running'
 				# Add more mappings as needed
 			}
-			
+
 			running_status = number_to_string[int(module_df['wda_flag'].iloc[0])]
 			if module in matrix_df['Modules'].values:
 				matrix_status = str(matrix_df[matrix_df['Modules'] == module]['Running Status'].iloc[0]).replace('"', '')
@@ -570,17 +595,17 @@ def get_chart_data():
 				matrix_comment = '-'
 				matrix_old = '-'
 				direct_feed_status = 0
-	
+
 
 			#.map({0:'Stopped', 1:'Regular Running',2:'Run By Request',3:'schedule Running'})
 			# Calculate last 3 days statistics
 			recent_df = module_df[module_df['last_run_date'] >= three_days_ago]
 			recent_count = recent_df['count'].sum()
 			recent_percentage = round((recent_count / total_count) * 100, 2) if total_count > 0 else 0
-			
+
 			module_stats.append({
 				'module': module,
-				'Running_Status': running_status,
+				'running_status': running_status,
 				'matrix_status': matrix_status,
 				'matrix_comment': matrix_comment,
 				'matrix_old': matrix_old,
@@ -623,16 +648,16 @@ def get_chart_data():
 
 		# Sort by total count descending
 		file_stats.sort(key=lambda x: x['total_count'], reverse=True)
-		
+
 		# Calculate new validation statistics
 		validation_stats = {
 			'stopped_modules': {
-				'count': len([m for m in module_stats if m['Running_Status'] == 'Stopped']),
-				'percentage': round(len([m for m in module_stats if m['Running_Status'] == 'Stopped']) / len(module_stats) * 100, 2)
+				'count': len([m for m in module_stats if m['running_status'] == 'Stopped']),
+				'percentage': round(len([m for m in module_stats if m['running_status'] == 'Stopped']) / len(module_stats) * 100, 2)
 			},
 			'stopped_parts': {
-				'count': sum(m['total_count'] for m in module_stats if m['Running_Status'] == 'Stopped'),
-				'percentage': round(sum(m['total_count'] for m in module_stats if m['Running_Status'] == 'Stopped') / stats['totalParts'] * 100, 2)
+				'count': sum(m['total_count'] for m in module_stats if m['running_status'] == 'Stopped'),
+				'percentage': round(sum(m['total_count'] for m in module_stats if m['running_status'] == 'Stopped') / stats['totalParts'] * 100, 2)
 			},
 			'pending_modules': {
 				'count': len([m for m in module_stats if m['matrix_status'] == 'Pending data team']),
@@ -647,14 +672,14 @@ def get_chart_data():
 				'percentage': round(len([m for m in module_stats if m['direct_feed_status'] == 1]) / len(module_stats) * 100, 2)
 			}
 		}
-		
+
 		# Calculate total percentage for validation
 		total_critical_percentage = (
-			validation_stats['stopped_parts']['percentage'] + 
-			validation_stats['pending_parts']['percentage'] + 
+			validation_stats['stopped_parts']['percentage'] +
+			validation_stats['pending_parts']['percentage'] +
 			validation_stats['direct_feed_modules']['percentage']
 		)
-		
+
 		validation_stats['file_status'] = 'Rejected' if total_critical_percentage > 10 else 'Accepted'
 		validation_stats['total_critical_percentage'] = round(total_critical_percentage, 2)
 
@@ -685,7 +710,7 @@ def get_chart_data():
 				'counts': [int(x) for x in timeline_data['count'].tolist()]
 			}
 		})
-		
+
 		print("Returning data")
 
 		return return_data
@@ -705,7 +730,7 @@ def Get_filtered_data(df, filters):
 	if filters.get('man'):
 		df = df[df['man'].isin(filters['man'])]
 	if filters.get('status'):
-		df['status_category'] = df['status'].apply(lambda x: 
+		df['status_category'] = df['status'].apply(lambda x:
 			'Proxy' if '403' in str(x) else
 			'Error' if any(err in str(x) for err in ['Error', 'Exception', 'Incomplete']) else
 			x
@@ -721,11 +746,32 @@ def Get_filtered_data(df, filters):
 		df = df[df['issue_modules'].isin([x.lower() == 'true' for x in filters['issue_modules']])]
 	if filters.get('startDate') and filters.get('endDate'):
 		df['last_run_date'] = pd.to_datetime(df['last_run_date'])
-		df = df[(df['last_run_date'] >= filters['startDate']) & 
+		df = df[(df['last_run_date'] >= filters['startDate']) &
 				(df['last_run_date'] <= filters['endDate'])]
 	if filters.get('done'):
 		df = df[df['done'].isin([int(x) for x in filters['done']])]
-	
+	if filters.get('running_status'):
+		# Convert wda_flag to running status string
+		number_to_string = {
+			0: "Stopped",
+			1: "Regular Running",
+			2: "Run By Request",
+			3: "schedule Running",
+			4: "schedule Running"
+		}
+		df['running_status'] = df['wda_flag'].map(lambda x: number_to_string.get(int(x), "Unknown"))
+		print(df['running_status'].unique())
+		print(filters['running_status'])
+		df = df[df['running_status'].isin(filters['running_status'])]
+	if filters.get('direct_feed'):
+		# Get direct feed status from the module_stats calculation
+		df_with_direct_feed = df.copy()
+		df_with_direct_feed['direct_feed'] = df_with_direct_feed.apply(
+			lambda row: 1 if row['man'] in direct_feed[direct_feed['Direct Feed'] == 1]['Supplier'].values else 0,
+			axis=1
+		)
+		df = df_with_direct_feed[df_with_direct_feed['direct_feed'].isin([int(x) for x in filters['direct_feed']])]
+
 	# Apply index range filter last
 	if filters.get('startIndex') is not None and filters.get('endIndex') is not None:
 		start_idx = int(filters['startIndex'])
@@ -734,7 +780,7 @@ def Get_filtered_data(df, filters):
 		if start_idx <= end_idx and start_idx >= 0 and end_idx < len(df):
 			df = df.iloc[start_idx:end_idx + 1]  # +1 because slice is exclusive of end
 			print("filtered")
-	
+
 	return df
 
 @app.route('/api/download-filtered', methods=['POST'])
@@ -754,7 +800,7 @@ def download_filtered():
 			df = df[df['man'].isin(filters['man'])]
 		if filters.get('status'):
 			# Modify status categorization before applying filter
-			df['status_category'] = df['status'].apply(lambda x: 
+			df['status_category'] = df['status'].apply(lambda x:
 				'Proxy' if '403' in str(x) else
 				'Error' if any(err in str(x) for err in ['Error', 'Exception', 'Incomplete']) else
 				x
@@ -770,7 +816,7 @@ def download_filtered():
 			df = df[df['issue_modules'].isin([x.lower() == 'true' for x in filters['issue_modules']])]
 		if filters.get('startDate') and filters.get('endDate'):
 			df['last_run_date'] = pd.to_datetime(df['last_run_date'])
-			df = df[(df['last_run_date'] >= filters['startDate']) & 
+			df = df[(df['last_run_date'] >= filters['startDate']) &
 				   (df['last_run_date'] <= filters['endDate'])]
 		if filters.get('done'):
 			df = df[df['done'].isin([int(x) for x in filters['done']])]
@@ -778,7 +824,7 @@ def download_filtered():
 		# Create a temporary file for the filtered results
 		temp_file = os.path.join(Config.result_path, 'filtered_results.csv')
 		df.to_csv(temp_file, index=False)
-		
+
 		return send_file(temp_file, as_attachment=True, download_name='filtered_results.csv')
 	except Exception as e:
 		app.logger.error(f'Error downloading filtered results: {str(e)}')
@@ -791,18 +837,18 @@ def update_stop_date():
 		app.logger.info('Updating stop monitor date')
 		file_name = request.json.get('file_name')
 		stop_date = request.json.get('stop_date')
-		
+
 		from check_status import create_db_engine
 		engine = create_db_engine()
-		
+
 		with engine.begin() as connection:
 			update_query = text("""
-				UPDATE uploaded_files 
+				UPDATE uploaded_files
 				SET stop_monitor_date = TO_DATE(:stop_date, 'YYYY-MM-DD')
 				WHERE file_name = :file_name
 			""")
 			connection.execute(update_query, {"stop_date": stop_date, "file_name": file_name})
-			
+
 		return jsonify({'status': 'success', 'message': 'Stop monitor date updated successfully'})
 	except Exception as e:
 		app.logger.error(f'Error updating stop monitor date: {str(e)}')
@@ -874,10 +920,10 @@ def run_import_status():
         data = request.get_json()
         start_date = data.get('start_date')
         end_date = data.get('end_date')
-        
+
         if not start_date or not end_date:
             return jsonify({'error': 'Start date and end date are required'}), 400
-        
+
         # Run the automation process
         results = automate_process(last_done_date=start_date, last_date=end_date)
         print(results.head())
@@ -885,11 +931,11 @@ def run_import_status():
         processed_results = []
         for date in results['date'].unique():
             date_data = results[results['date'] == date]
-            
+
             # Process found parts
             found_data = date_data[date_data['table'] == 'found'].iloc[0] if len(date_data[date_data['table'] == 'found']) > 0 else None
             not_found_data = date_data[date_data['table'] == 'notfound'].iloc[0] if len(date_data[date_data['table'] == 'notfound']) > 0 else None
-            
+
             if found_data is not None:
                 processed_results.append({
                     'date': date.strftime('%Y-%m-%d'),
@@ -901,7 +947,7 @@ def run_import_status():
                     'imported_count': int(found_data['imported_count']),
                     'not_imported_count': int(found_data['not_imported_count'])
                 })
-            
+
             if not_found_data is not None:
                 processed_results.append({
                     'date': date.strftime('%Y-%m-%d'),
@@ -913,7 +959,7 @@ def run_import_status():
                     'imported_count': int(not_found_data['imported_count']),
                     'not_imported_count': int(not_found_data['not_imported_count'])
                 })
-        
+
         return jsonify({
             'message': 'Import status check completed successfully',
             'results': processed_results
@@ -928,15 +974,15 @@ def download_reports():
         data = request.get_json()
         start_date = data.get('start_date')
         end_date = data.get('end_date')
-        
+
         if not start_date or not end_date:
             return jsonify({'error': 'Start date and end date are required'}), 400
-        
+
         # Download reports using the existing Download_autoImported function
         feed_hour, notApproved_hour = Download_autoImported(start_date, end_date)
-        patterns = move_exported_files(Config.prty_feed_path, 'automate_records', 
+        patterns = move_exported_files(Config.prty_feed_path, 'automate_records',
                                      feed_hour=feed_hour, notApproved_hour=notApproved_hour)
-        
+
         # Get list of available dates from the moved files
         available_dates = []
         for pattern in patterns:
@@ -945,7 +991,7 @@ def download_reports():
                 date_str = date_match.group()
                 formatted_date = datetime.strptime(date_str, '%d-%b-%Y').strftime('%Y-%m-%d')
                 available_dates.append(formatted_date)
-        
+
         return jsonify({
             'message': 'Reports downloaded successfully',
             'dates': sorted(list(set(available_dates)))
@@ -960,14 +1006,14 @@ def download_part_details():
         data = request.get_json()
         start_date = data.get('start_date')
         end_date = data.get('end_date')
-        
+
         if not start_date or not end_date:
             return jsonify({'error': 'Start date and end date are required'}), 400
-        
+
         # Download part details using existing functions
         check_and_download_missing_dates(start_date, end_date, Config.daily_feed_url, Config.daily_feed_path)
         extract_part_details(Config.daily_feed_path, 'automate_records', start_date, end_date)
-        
+
         return jsonify({'message': 'Part details downloaded successfully'})
     except Exception as e:
         app.logger.error(f'Error downloading part details: {str(e)}')
@@ -978,21 +1024,21 @@ def calculate_status():
     try:
         data = request.get_json()
         dates = data.get('dates')
-        
+
         if not dates:
             return jsonify({'error': 'No dates selected'}), 400
-        
+
         # Find the corresponding report files for the selected dates
         results = []
         for date in dates:
             #formatted_date = datetime.strptime(date, '%Y-%m-%d').strftime('%d-%b-%Y')
             found_file = f'Export_prysysFeed_{date}.txt'
             not_found_file = f'Export_NotFound_prysysFeed_{date}.txt'
-            
+
             # Find matching files
             found_matches = glob.glob(os.path.join('automate_records', found_file))
             not_found_matches = glob.glob(os.path.join('automate_records', not_found_file))
-            
+
             if found_matches and not_found_matches:
                 result = calculate_import_status(found_matches[0], not_found_matches[0], 'automate_records')
                 results.extend(result.to_dict('records'))
@@ -1010,22 +1056,22 @@ def download_report(report_type, start_date, end_date):
     try:
         start_date_obj = datetime.strptime(start_date, '%Y-%m-%d')
         end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
-        
+
         # Initialize empty list to store dataframes
         all_dfs = []
         current_date = start_date_obj
-        
+
         # Loop through each date in the range
         while current_date <= end_date_obj:
             formatted_date = current_date.strftime('%Y-%m-%d')
-            
+
             if report_type == 'imported':
                 filename = f'Imported_NotImported_parts_{formatted_date}.csv'
             else:  # missed
                 filename = f'Missed_Inprogress_parts_{formatted_date}.csv'
-            
+
             file_path = os.path.join('automate_records', filename)
-            
+
             if os.path.exists(file_path):
                 try:
                     # Read the CSV file and add date column
@@ -1034,29 +1080,29 @@ def download_report(report_type, start_date, end_date):
                     all_dfs.append(df)
                 except Exception as e:
                     app.logger.error(f'Error reading file {filename}: {str(e)}')
-            
+
             current_date += timedelta(days=1)
-        
+
         if not all_dfs:
             return jsonify({'error': 'No report files found for the specified date range'}), 404
-        
+
         # Concatenate all dataframes
         combined_df = pd.concat(all_dfs, ignore_index=True)
-        
+
         # Create a temporary file for the combined results
         temp_dir = os.path.join('automate_records', 'temp')
         os.makedirs(temp_dir, exist_ok=True)
-        
+
         if report_type == 'imported':
             output_filename = f'Combined_Imported_NotImported_parts_{start_date}_to_{end_date}.csv'
         else:
             output_filename = f'Combined_Missed_Inprogress_parts_{start_date}_to_{end_date}.csv'
-        
+
         temp_file_path = os.path.join(temp_dir, output_filename)
-        
+
         # Save the combined DataFrame to CSV
         combined_df.to_csv(temp_file_path, index=False)
-        
+
         # Send the combined file
         return send_file(
             temp_file_path,
@@ -1064,7 +1110,7 @@ def download_report(report_type, start_date, end_date):
             as_attachment=True,
             download_name=output_filename
         )
-            
+
     except Exception as e:
         app.logger.error(f'Error in download_report: {str(e)}')
         return jsonify({'error': str(e)}), 500
@@ -1080,29 +1126,29 @@ def download_report(report_type, start_date, end_date):
 def download_not_approved():
     try:
         seven_zip_path = os.path.join('automate_records', 'Latest_Not_Approved.7z')
-        
+
         if not os.path.exists(seven_zip_path):
             return jsonify({
                 'error': 'No not approved file is currently available. Please try again later.'
             }), 404
-        
+
         # Get the file's last modification time
         mod_time = datetime.fromtimestamp(os.path.getmtime(seven_zip_path))
         current_time = datetime.now()
-        
+
         # Check if file is older than 24 hours
         if (current_time - mod_time).days >= 1:
             return jsonify({
                 'error': 'The available file is more than 24 hours old. Please generate a new export first.'
             }), 404
-            
+
         return send_file(
             seven_zip_path,
             mimetype='application/x-7z-compressed',
             as_attachment=True,
             download_name=f'Not_Approved_Parts_{mod_time.strftime("%Y%m%d_%H%M")}.7z'
         )
-            
+
     except Exception as e:
         app.logger.error(f'Error in download_not_approved: {str(e)}')
         return jsonify({'error': str(e)}), 500
@@ -1117,7 +1163,7 @@ def download_matrix_task():
 # 🔹 Define TaskConfig
 class TaskConfig:
     SCHEDULER_API_ENABLED = True
-    
+
     SCHEDULER_EXECUTORS = {
         'default': {'type': 'threadpool', 'max_workers': 5}
     }
@@ -1150,7 +1196,7 @@ def get_available_dates():
         # Get list of available dates from your storage location
         available_dates = []
         reports_dir = 'automate_records'  # Adjust this to your reports directory
-        
+
         # Get all report files and extract dates
         for file in os.listdir(reports_dir):
             if file.endswith('.txt') and 'NotFound_prysysFeed' in file:
@@ -1160,10 +1206,10 @@ def get_available_dates():
                 if date_match:
                     date_str = date_match.group()
                     available_dates.append(date_str)
-        
+
         # Remove duplicates and sort
         available_dates = sorted(list(set(available_dates)), reverse=True)
-        
+
         return jsonify({
             'dates': available_dates
         })
@@ -1184,49 +1230,27 @@ scheduler.start()
 @app.route('/api/upload-filtered-to-amazon', methods=['POST'])
 def upload_filtered_to_amazon():
     global amazon_upload_in_progress, grouped_data
-    
+
     if amazon_upload_in_progress:
         return jsonify({'error': 'Another upload to Amazon is in progress. Please wait.'}), 429
-    
+
     try:
         with amazon_upload_lock:
             amazon_upload_in_progress = True
-            
+
             # Get filters from request
             filters = request.json
             df = global_df.copy()
             df = Get_filtered_data(df , filters)
             # Apply filters
-            """if filters.get('module'):
-                df = df[df['module'].isin(filters['module'])]
-            if filters.get('file_name'):
-                df = df[df['file_name'].isin(filters['file_name'])]
-            if filters.get('man'):
-                df = df[df['man'].isin(filters['man'])]
-            if filters.get('status'):
-                df = df[df['status'].isin(filters['status'])]
-            if filters.get('prty'):
-                df = df[df['prty'].isin(filters['prty'])]
-            if filters.get('is_expired'):
-                df = df[df['is_expired'].isin([x.lower() == 'true' for x in filters['is_expired']])]
-            if filters.get('table_name'):
-                df = df[df['table_name'].isin(filters['table_name'])]
-            if filters.get('issue_modules'):
-                df = df[df['issue_modules'].isin([x.lower() == 'true' for x in filters['issue_modules']])]
-            if filters.get('startDate') and filters.get('endDate'):
-                df['last_run_date'] = pd.to_datetime(df['last_run_date'])
-                df = df[(df['last_run_date'] >= filters['startDate']) & 
-                         (df['last_run_date'] <= filters['endDate'])]
-            if filters.get('done'):
-                df = df[df['done'].isin([int(x) for x in filters['done']])]
-		    """
+            
             # Generate a unique filename for the filtered data
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f'filtered_data_{timestamp}.csv'
-            
+
             # Upload the filtered data to Amazon
             upload_file_to_amazon(df, filename)
-            
+
             return jsonify({'message': 'Filtered data uploaded to Amazon successfully'})
     except Exception as e:
         app.logger.error(f'Error uploading filtered data to Amazon: {str(e)}')
