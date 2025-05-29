@@ -9,8 +9,8 @@ import pandas as pd
 print("import pandas as pd")
 from logging.handlers import RotatingFileHandler
 print("from logging.handlers import RotatingFileHandler")
-from flask import Flask, render_template, request, jsonify, send_file, flash, redirect, url_for
-print("from flask import Flask, render_template, request, jsonify, send_file, flash, redirect, url_for")
+from flask import Flask, render_template, request, jsonify, send_file, flash, redirect, url_for, session
+print("from flask import Flask, render_template, request, jsonify, send_file, flash, redirect, url_for, session")
 from flask_apscheduler import APScheduler
 print("from flask_apscheduler import APScheduler")
 from sqlalchemy import text
@@ -19,6 +19,10 @@ from werkzeug.utils import secure_filename
 print("from werkzeug.utils import secure_filename")
 from datetime import datetime, timedelta
 print("from datetime import datetime")
+from functools import wraps
+print("from functools import wraps")
+import hashlib
+print("import hashlib")
 from Parts_Upload import main_upload_parts, main_delete_file
 print("from Parts_Upload import main_upload_parts, main_delete_file")
 from check_status import Get_status, Download_results, get_status_statistics, daily_check_all
@@ -186,6 +190,9 @@ def create_app():
 	app = Flask(__name__)
 	app.config.from_object(Config)
 
+	# Set secret key for sessions
+	app.secret_key = getattr(Config, 'SECRET_KEY', 'your-secret-key-change-this')
+
 	# Configure logging with the safe handler
 	if not app.debug:
 		if not os.path.exists('logs'):
@@ -221,6 +228,133 @@ file_status = {}
 files_being_checked = set()
 files_being_checked_lock = threading.Lock()
 
+# User management system
+USERS = {
+    'WDA': {
+        'password': hashlib.sha256('admin'.encode()).hexdigest(),
+        'role': 'admin',
+        'full_name': 'WDA Administrator',
+        'permissions': ['all']
+    },
+    'analyst1': {
+        'password': hashlib.sha256('analyst123'.encode()).hexdigest(),
+        'role': 'analyst',
+        'full_name': 'Data Analyst 1',
+        'permissions': ['view', 'check_status', 'download']
+    },
+    'analyst2': {
+        'password': hashlib.sha256('analyst456'.encode()).hexdigest(),
+        'role': 'analyst',
+        'full_name': 'Data Analyst 2',
+        'permissions': ['view', 'check_status', 'download']
+    },
+    'operator1': {
+        'password': hashlib.sha256('operator123'.encode()).hexdigest(),
+        'role': 'operator',
+        'full_name': 'System Operator 1',
+        'permissions': ['view', 'check_status', 'download', 'upload', 'delete']
+    },
+    'operator2': {
+        'password': hashlib.sha256('operator456'.encode()).hexdigest(),
+        'role': 'operator',
+        'full_name': 'System Operator 2',
+        'permissions': ['view', 'check_status', 'download', 'upload', 'delete']
+    },
+    'viewer1': {
+        'password': hashlib.sha256('viewer123'.encode()).hexdigest(),
+        'role': 'viewer',
+        'full_name': 'Read Only User 1',
+        'permissions': ['view']
+    },
+    'manager1': {
+        'password': hashlib.sha256('manager123'.encode()).hexdigest(),
+        'role': 'manager',
+        'full_name': 'Department Manager',
+        'permissions': ['view', 'check_status', 'download', 'upload', 'amazon_upload']
+    }
+}
+
+# User activity logging
+user_activity_log = []
+user_activity_lock = threading.Lock()
+
+def log_user_activity(username, action, details=None, ip_address=None):
+    """Log user activity with timestamp"""
+    with user_activity_lock:
+        activity = {
+            'timestamp': datetime.now(),
+            'username': username,
+            'action': action,
+            'details': details or '',
+            'ip_address': ip_address or request.remote_addr if request else 'Unknown'
+        }
+        user_activity_log.append(activity)
+
+        # Keep only last 1000 entries to prevent memory issues
+        if len(user_activity_log) > 1000:
+            user_activity_log.pop(0)
+
+def authenticate_user(username, password):
+    """Authenticate user credentials"""
+    if username in USERS:
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        if USERS[username]['password'] == hashed_password:
+            return True
+    return False
+
+def get_user_info(username):
+    """Get user information"""
+    return USERS.get(username, None)
+
+def has_permission(username, permission):
+    """Check if user has specific permission"""
+    user = get_user_info(username)
+    if not user:
+        return False
+    return 'all' in user['permissions'] or permission in user['permissions']
+
+def login_required(f):
+    """Decorator to require login for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'username' not in session:
+            return jsonify({'error': 'Authentication required', 'redirect': '/login'}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+def permission_required(permission):
+    """Decorator to require specific permission"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'username' not in session:
+                return jsonify({'error': 'Authentication required', 'redirect': '/login'}), 401
+
+            username = session['username']
+            if not has_permission(username, permission):
+                log_user_activity(username, 'PERMISSION_DENIED', f'Attempted to access {permission}')
+                return jsonify({'error': 'Insufficient permissions'}), 403
+
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+def admin_required(f):
+    """Decorator to require admin role"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'username' not in session:
+            return jsonify({'error': 'Authentication required', 'redirect': '/login'}), 401
+
+        username = session['username']
+        user = get_user_info(username)
+        if not user or user['role'] != 'admin':
+            log_user_activity(username, 'ADMIN_ACCESS_DENIED', 'Attempted to access admin-only resource')
+            return jsonify({'error': 'Admin access required'}), 403
+
+        return f(*args, **kwargs)
+    return decorated_function
+
 def is_file_being_checked(file_name):
     """Check if a file is currently being checked"""
     with files_being_checked_lock:
@@ -253,11 +387,111 @@ if os.path.exists(SCHEDULED_FILES_PATH):
     except Exception as e:
         app.logger.error(f'Error loading scheduled files: {str(e)}')
 
+# Authentication routes
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+	if request.method == 'GET':
+		return render_template('login.html')
+
+	data = request.get_json()
+	username = data.get('username')
+	password = data.get('password')
+
+	if authenticate_user(username, password):
+		session['username'] = username
+		user_info = get_user_info(username)
+		session['role'] = user_info['role']
+		session['full_name'] = user_info['full_name']
+
+		log_user_activity(username, 'LOGIN', 'User logged in successfully')
+
+		return jsonify({
+			'status': 'success',
+			'message': 'Login successful',
+			'user': {
+				'username': username,
+				'role': user_info['role'],
+				'full_name': user_info['full_name'],
+				'permissions': user_info['permissions']
+			}
+		})
+	else:
+		log_user_activity(username or 'Unknown', 'LOGIN_FAILED', 'Invalid credentials')
+		return jsonify({'status': 'error', 'message': 'Invalid credentials'}), 401
+
+@app.route('/logout', methods=['POST'])
+@login_required
+def logout():
+	username = session.get('username')
+	log_user_activity(username, 'LOGOUT', 'User logged out')
+	session.clear()
+	return jsonify({'status': 'success', 'message': 'Logged out successfully'})
+
+@app.route('/check-auth', methods=['GET'])
+def check_auth():
+	if 'username' in session:
+		user_info = get_user_info(session['username'])
+		return jsonify({
+			'authenticated': True,
+			'user': {
+				'username': session['username'],
+				'role': session.get('role'),
+				'full_name': session.get('full_name'),
+				'permissions': user_info['permissions'] if user_info else []
+			}
+		})
+	return jsonify({'authenticated': False})
+
 @app.route('/get-file-status', methods=['GET'])
+@login_required
 def get_file_status():
 	return jsonify(file_status)
 
+@app.route('/admin/dashboard')
+@admin_required
+def admin_dashboard():
+	"""Admin dashboard page"""
+	log_user_activity(session['username'], 'ADMIN_DASHBOARD_ACCESS', 'Accessed admin dashboard')
+	return render_template('admin_dashboard.html')
+
+@app.route('/admin/user-logs')
+@admin_required
+def get_user_logs():
+	"""Get user activity logs for admin"""
+	with user_activity_lock:
+		logs = user_activity_log.copy()
+
+	# Convert datetime objects to strings for JSON serialization
+	formatted_logs = []
+	for log in reversed(logs):  # Show most recent first
+		formatted_logs.append({
+			'timestamp': log['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
+			'username': log['username'],
+			'action': log['action'],
+			'details': log['details'],
+			'ip_address': log['ip_address']
+		})
+
+	return jsonify({'logs': formatted_logs})
+
+@app.route('/admin/users')
+@admin_required
+def get_users():
+	"""Get list of all users for admin"""
+	users_info = []
+	for username, user_data in USERS.items():
+		users_info.append({
+			'username': username,
+			'role': user_data['role'],
+			'full_name': user_data['full_name'],
+			'permissions': user_data['permissions']
+		})
+
+	log_user_activity(session['username'], 'ADMIN_USERS_VIEW', 'Viewed users list')
+	return jsonify({'users': users_info})
+
 @app.route('/get-files-being-checked', methods=['GET'])
+@login_required
 def get_files_being_checked_endpoint():
 	"""Get list of files currently being checked"""
 	return jsonify({'files_being_checked': list(get_files_being_checked())})
@@ -283,8 +517,12 @@ def reset_file_status():
 	return jsonify({'status': 'success'})
 
 @app.route('/')
+@login_required
 def index():
-	app.logger.info('Accessing index page')
+	username = session['username']
+	app.logger.info(f'User {username} accessing index page')
+	log_user_activity(username, 'PAGE_ACCESS', 'Accessed main dashboard')
+
 	files = os.listdir(Config.WORK_FOLDER)
 	today = datetime.now().date()
 
@@ -302,7 +540,9 @@ def index():
 		app.logger.error(f'Error getting database files: {str(e)}')
 		db_files = []
 
-	return render_template('index.html', files=files, db_files=db_files, today=today, scheduled_files=scheduled_files)
+	user_info = get_user_info(username)
+	return render_template('index.html', files=files, db_files=db_files, today=today,
+						 scheduled_files=scheduled_files, user=user_info)
 
 @app.route('/update-data', methods=['GET'])
 def update_data():
@@ -321,12 +561,20 @@ def update_data():
 
 
 @app.route('/visuals')
+@login_required
+@permission_required('view')
 def visualizations():
-	app.logger.info('Accessing visualizations page')
-	return render_template('visuals.html')
+	username = session['username']
+	app.logger.info(f'User {username} accessing visualizations page')
+	log_user_activity(username, 'PAGE_ACCESS', 'Accessed visualizations page')
+	user_info = get_user_info(username)
+	return render_template('visuals.html', user=user_info)
 
 @app.route('/upload', methods=['POST'])
+@login_required
+@permission_required('upload')
 def upload_file():
+	username = session['username']
 	print(request.files)
 	if 'file' not in request.files:
 		app.logger.error('No file part in request')
@@ -346,29 +594,39 @@ def upload_file():
 
 		try:
 			file.save(file_path)
-			app.logger.info(f'File saved: {new_filename}')
+			app.logger.info(f'User {username} uploaded file: {new_filename}')
+			log_user_activity(username, 'FILE_UPLOAD', f'Uploaded: {new_filename}')
 			main_upload_parts(Config.WORK_FOLDER)
 			app.logger.info('File processed successfully')
 			return jsonify({'message': 'File uploaded and processed successfully'})
 		except Exception as e:
 			app.logger.error(f'Error processing file: {str(e)}')
+			log_user_activity(username, 'FILE_UPLOAD_ERROR', f'Failed to upload: {filename} - {str(e)}')
 			return jsonify({'error': str(e)}), 500
 
 @app.route('/delete/<filename>', methods=['POST'])
+@login_required
+@permission_required('delete')
 def delete_file(filename):
+	username = session['username']
 	try:
-		app.logger.info(f'Attempting to delete file: {filename}')
+		app.logger.info(f'User {username} attempting to delete file: {filename}')
+		log_user_activity(username, 'FILE_DELETE', f'Deleted: {filename}')
 		main_delete_file(Config.WORK_FOLDER, filename)
-		app.logger.info(f'File deleted successfully: {filename}')
+		app.logger.info(f'File deleted successfully by {username}: {filename}')
 		return jsonify({'message': 'File deleted successfully'})
 	except Exception as e:
-		app.logger.error(f'Error deleting file {filename}: {str(e)}')
+		app.logger.error(f'Error deleting file {filename} by {username}: {str(e)}')
+		log_user_activity(username, 'FILE_DELETE_ERROR', f'Failed to delete: {filename} - {str(e)}')
 		return jsonify({'error': str(e)}), 500
 
 
 @app.route('/upload-to-amazon', methods=['POST'])
+@login_required
+@permission_required('amazon_upload')
 def upload_to_amazon():
     global amazon_upload_in_progress
+    username = session['username']
     filename = request.json.get('file_name')
     if not filename:
         return jsonify({'error': 'Filename is required'}), 400
@@ -380,23 +638,32 @@ def upload_to_amazon():
     try:
         with amazon_upload_lock:
             amazon_upload_in_progress = True
+            app.logger.info(f'User {username} uploading file to Amazon: {filename}')
+            log_user_activity(username, 'AMAZON_UPLOAD', f'Uploaded to Amazon: {filename}')
             file_path = os.path.join(Config.WORK_FOLDER, filename)
             df = pd.read_csv(file_path, sep='\t')
             upload_file_to_amazon(df,filename)
+            app.logger.info(f'File uploaded to Amazon successfully by {username}: {filename}')
             return jsonify({'message': 'File uploaded to Amazon successfully'})
     except Exception as e:
+        app.logger.error(f'Error uploading file to Amazon by {username}: {str(e)}')
+        log_user_activity(username, 'AMAZON_UPLOAD_ERROR', f'Failed to upload to Amazon: {filename} - {str(e)}')
         return jsonify({'error': str(e)}), 500
     finally:
         amazon_upload_in_progress = False
 
 
 @app.route('/status', methods=['POST'])
+@login_required
+@permission_required('check_status')
 def check_status():
 	selected_files = request.json.get('files', [])
 	ignore_date = request.json.get('ignore_date', True)
+	username = session['username']
 
 	try:
-		app.logger.info(f'Checking status for files: {selected_files}')
+		app.logger.info(f'User {username} checking status for files: {selected_files}')
+		log_user_activity(username, 'STATUS_CHECK', f'Files: {", ".join(selected_files)}')
 
 		# Check for files already being checked and filter them out
 		files_to_check = []

@@ -560,12 +560,14 @@
 	<!-- Navigation Bar -->
 	<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
 		<div class="container-fluid">
-			<a class="navbar-brand" href="/">WDA Monitor</a>
+			<a class="navbar-brand" href="/">
+				<i class="fas fa-chart-line me-2"></i>WDA Monitor
+			</a>
 			<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
 				<span class="navbar-toggler-icon"></span>
 			</button>
 			<div class="collapse navbar-collapse" id="navbarNav">
-				<ul class="navbar-nav">
+				<ul class="navbar-nav me-auto">
 					<li class="nav-item">
 						<a class="nav-link" href="/">Home</a>
 					</li>
@@ -574,6 +576,25 @@
 					</li>
 					<li class="nav-item">
 						<a class="nav-link" href="/import-status">Import Status</a>
+					</li>
+				</ul>
+				<ul class="navbar-nav">
+					<li class="navbar-text me-3">
+						<i class="fas fa-user me-1"></i>
+						<span id="userFullName">{{ user.full_name if user else 'User' }}</span>
+						<span class="badge bg-light text-dark ms-1" id="userRole">{{ user.role if user else 'Unknown' }}</span>
+					</li>
+					{% if user and user.role == 'admin' %}
+					<li class="nav-item">
+						<a class="nav-link" href="/admin/dashboard">
+							<i class="fas fa-cog me-1"></i>Admin
+						</a>
+					</li>
+					{% endif %}
+					<li class="nav-item">
+						<a class="nav-link" href="#" onclick="logout()">
+							<i class="fas fa-sign-out-alt me-1"></i>Logout
+						</a>
 					</li>
 				</ul>
 			</div>
@@ -2445,6 +2466,54 @@ $('#uploadFilteredToAmazon').click(async function() {
         $('#loading').hide();
     }
 });
+
+// Authentication functions
+async function checkAuth() {
+	try {
+		const response = await fetch('/check-auth');
+		const data = await response.json();
+
+		if (data.authenticated) {
+			// Update user info in navbar
+			document.getElementById('userFullName').textContent = data.user.full_name;
+			document.getElementById('userRole').textContent = data.user.role;
+
+			// Store user info for client-side reference
+			localStorage.setItem('userInfo', JSON.stringify(data.user));
+
+			return true;
+		} else {
+			// Redirect to login page
+			window.location.href = '/login';
+			return false;
+		}
+	} catch (error) {
+		console.error('Auth check failed:', error);
+		window.location.href = '/login';
+		return false;
+	}
+}
+
+async function logout() {
+	try {
+		const response = await fetch('/logout', { method: 'POST' });
+		if (response.ok) {
+			localStorage.removeItem('userInfo');
+			window.location.href = '/login';
+		}
+	} catch (error) {
+		console.error('Logout failed:', error);
+		// Force redirect even if logout request fails
+		localStorage.removeItem('userInfo');
+		window.location.href = '/login';
+	}
+}
+
+// Check authentication on page load
+document.addEventListener('DOMContentLoaded', async () => {
+	await checkAuth();
+});
+
 	</script>
 </body>
 </html>

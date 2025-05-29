@@ -1,12 +1,17 @@
 import os
+import dotenv
+
+dotenv.load_dotenv()
 
 class Config:
     # Database Configuration
-    SQLALCHEMY_DATABASE_URI = "oracle+oracledb://A161070:MostafaAsalA161070@10.199.104.126/analytics"
-    #SQLALCHEMY_DATABASE_URI = "oracle+oracledb://USER:PASSWORD@10.199.104.126/analytics"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SECRET_KEY = 'your-secret-key'
-    DB_URI = 'oracle+oracledb://A161070:MostafaAsalA161070@10.199.104.126/analytics'  # Replace with your actual connection string
+    SECRET_KEY = 'wda-monitor-secure-key-2024-change-in-production'
+    DB_URI = os.getenv("DB_URI")
+    SQLALCHEMY_DATABASE_URI = os.getenv("DB_URI")
+    print("--------------------------------------------------------")
+    print(SQLALCHEMY_DATABASE_URI,DB_URI,list(os.environ))
+    print("--------------------------------------------------------")
     WORK_FOLDER = "Data"
     UPLOAD_FOLDER = "Upload"
     result_path = 'results'
@@ -19,7 +24,7 @@ class Config:
     UPLOAD_FOLDER = "instance/uploads"
     EMAIL_FROM = 'mostafa.asal@siliconexpert.com'
     EMAIL_TO =['nader_seliman@siliconexpert.com','mostafa.asal@siliconexpert.com','heba_moheb@siliconexpert.com','abdrabu_ahmed@siliconexpert.com']
-    
+
     # SMTP Configuration
     SMTP_SERVER = 'smtp.office365.com'
     SMTP_PORT = 587
@@ -30,7 +35,7 @@ class Config:
     client_id='7eadcef8-456d-4611-9480-4fff72b8b9e2'
     access='https://myaccess.microsoft.com/?tenantId=0beb0c35-9cbb-4feb-99e5-589e415c7944&upn=Mostafa.Asal%40siliconexpert.com'
 
-    
+
 
     #automate status process
     daily_feed_url = r'https://d3ei71guzcqeu2.cloudfront.net/DailyExporterFeed/Priority%20System%20Results_Amazon%40{}.zip'
@@ -49,31 +54,31 @@ class SQLQueries:
             USING (
                 WITH files_id as (select id from uploaded_files  where file_name  in {files_string} {check_date} {date_condition} )
                 ,parts_id AS (
-                    SELECT 
-                        p.ID AS PART_ID, 
-                        p.PART, 
-                        p.MAN, 
-                        p.MODULE, 
-                        p.FILE_ID, 
-                        CASE 
-                            WHEN m.module_name IS NULL THEN 'not_valid' 
-                            ELSE p.STATUS 
+                    SELECT
+                        p.ID AS PART_ID,
+                        p.PART,
+                        p.MAN,
+                        p.MODULE,
+                        p.FILE_ID,
+                        CASE
+                            WHEN m.module_name IS NULL THEN 'not_valid'
+                            ELSE p.STATUS
                         END AS STATUS,
-                        p.CM_DATE, 
-                        p.LAST_RUN_DATE, 
-                        p.TABLE_NAME, 
-                        p."monitor features", 
-                        m.MAN_ID, 
+                        p.CM_DATE,
+                        p.LAST_RUN_DATE,
+                        p.TABLE_NAME,
+                        p."monitor features",
+                        m.MAN_ID,
                         m.MODULE_ID
                     FROM parts p
-                    LEFT JOIN updatesys.tbl_man_modules@new3_n m 
+                    LEFT JOIN updatesys.tbl_man_modules@new3_n m
                     ON p.module = m.module_name
                     where p.file_id  IN (
                         SELECT id FROM files_id
                     )
                 ),
                 found_notfound_table AS (
-                    SELECT 
+                    SELECT
                         pm.PART_ID,
                         pm.PART,
                         pm.MAN,
@@ -85,93 +90,93 @@ class SQLQueries:
                         pm."monitor features",
                         pm.MAN_ID,
                         pm.MODULE_ID,
-                        CASE 
+                        CASE
                             WHEN pm.STATUS = 'not_valid' THEN 'not_valid'
                             WHEN NOT EXISTS (
-                                SELECT 1 
-                                FROM updatesys.TBL_Prty_pns_@NEW3_N st 
+                                SELECT 1
+                                FROM updatesys.TBL_Prty_pns_@NEW3_N st
                                 WHERE st.pn = pm.PART AND st.man_id = pm.MAN_ID
                             ) THEN 'not SE part'
                             WHEN EXISTS (
-                                SELECT 1 
-                                FROM updatesys.TBL_Prty_pns_@NEW3_N st 
-                                WHERE st.pn = pm.PART AND st.man_id = pm.MAN_ID AND st.mod_id = pm.MODULE_ID 
+                                SELECT 1
+                                FROM updatesys.TBL_Prty_pns_@NEW3_N st
+                                WHERE st.pn = pm.PART AND st.man_id = pm.MAN_ID AND st.mod_id = pm.MODULE_ID
                                 AND st.LRD is null and st.V_NOTFOUND_DAT is null
                             ) THEN 'not run'
                             WHEN EXISTS (
-                                SELECT 1 
-                                FROM updatesys.TBL_Prty_pns_@NEW3_N st 
-                                WHERE st.pn = pm.PART AND st.man_id = pm.MAN_ID AND st.mod_id = pm.MODULE_ID 
+                                SELECT 1
+                                FROM updatesys.TBL_Prty_pns_@NEW3_N st
+                                WHERE st.pn = pm.PART AND st.man_id = pm.MAN_ID AND st.mod_id = pm.MODULE_ID
                                 AND NVL(cm.XLP_RELEASEDATE_FUNCTION_D(st.LRD), TO_DATE('01-JAN-1900', 'DD-MON-YYYY')) >
                                 NVL(st.V_NOTFOUND_DAT, TO_DATE('01-JAN-1900', 'DD-MON-YYYY'))
                             ) THEN 'found'
                             ELSE 'not found'
                         END AS STATUS,
-                        (SELECT 
-                            GREATEST(NVL(cm.XLP_RELEASEDATE_FUNCTION_D(st.LRD), TO_DATE('01-JAN-1900', 'DD-MON-YYYY')), 
+                        (SELECT
+                            GREATEST(NVL(cm.XLP_RELEASEDATE_FUNCTION_D(st.LRD), TO_DATE('01-JAN-1900', 'DD-MON-YYYY')),
                             NVL(st.V_NOTFOUND_DAT, TO_DATE('01-JAN-1900', 'DD-MON-YYYY')))
-                        FROM updatesys.TBL_Prty_pns_@NEW3_N st 
+                        FROM updatesys.TBL_Prty_pns_@NEW3_N st
                         WHERE st.pn = pm.PART AND st.man_id = pm.MAN_ID AND st.mod_id = pm.MODULE_ID
                         FETCH FIRST 1 ROWS ONLY
                         ) AS LRD_V_NOTFOUND_MAX,
-                        (SELECT 
+                        (SELECT
                             prty
-                        FROM updatesys.TBL_Prty_pns_@NEW3_N st 
+                        FROM updatesys.TBL_Prty_pns_@NEW3_N st
                         WHERE st.pn = pm.PART AND st.man_id = pm.MAN_ID AND st.mod_id = pm.MODULE_ID
                         FETCH FIRST 1 ROWS ONLY
                         ) AS prty
                     FROM parts_id pm
                 ),
                 not_f AS (
-                    SELECT 
+                    SELECT
                         fnf_1.*,
                         nf.check_date,
                         nf.status AS status_2
-                    FROM found_notfound_table fnf_1 
-                    LEFT JOIN webspider.TBL_PRSYS_FEED_NOTFOUND@NEW3_N nf 
+                    FROM found_notfound_table fnf_1
+                    LEFT JOIN webspider.TBL_PRSYS_FEED_NOTFOUND@NEW3_N nf
                     ON nf.mpn = fnf_1.PART AND nf.man_id = fnf_1.MAN_ID AND nf.mod_id = fnf_1.MODULE_ID
                 )
                 SELECT DISTINCT
-                    PART_ID, 
-                    PART, 
-                    MAN, 
-                    MODULE, 
+                    PART_ID,
+                    PART,
+                    MAN,
+                    MODULE,
                     FILE_ID,
-                    CM_DATE, 
-                    CASE 
-                        WHEN STATUS <> 'found' THEN STATUS_2 
-                        ELSE NULL 
+                    CM_DATE,
+                    CASE
+                        WHEN STATUS <> 'found' THEN STATUS_2
+                        ELSE NULL
                     END AS STATUS,
-                    CASE 
-                        WHEN LAST_RUN_DATE > TO_DATE('01-JAN-2001', 'DD-MON-YYYY') THEN LAST_RUN_DATE 
-                        ELSE NULL 
+                    CASE
+                        WHEN LAST_RUN_DATE > TO_DATE('01-JAN-2001', 'DD-MON-YYYY') THEN LAST_RUN_DATE
+                        ELSE NULL
                     END AS LAST_RUN_DATE,
-                    STATUS AS TABLE_NAME, 
-                    "monitor features", 
-                    MAN_ID, 
+                    STATUS AS TABLE_NAME,
+                    "monitor features",
+                    MAN_ID,
                     MODULE_ID,
                     prty
                 FROM (
-                    SELECT 
-                        fnf_1.PART_ID, 
-                        fnf_1.PART, 
-                        fnf_1.MAN, 
-                        fnf_1.MODULE, 
-                        fnf_1.FILE_ID, 
-                        fnf_1.CM_DATE,  
-                        fnf_1.TABLE_NAME, 
-                        fnf_1."monitor features", 
-                        fnf_1.MAN_ID, 
-                        fnf_1.MODULE_ID, 
+                    SELECT
+                        fnf_1.PART_ID,
+                        fnf_1.PART,
+                        fnf_1.MAN,
+                        fnf_1.MODULE,
+                        fnf_1.FILE_ID,
+                        fnf_1.CM_DATE,
+                        fnf_1.TABLE_NAME,
+                        fnf_1."monitor features",
+                        fnf_1.MAN_ID,
+                        fnf_1.MODULE_ID,
                         fnf_1.prty,
                         fnf_1.STATUS,
                         fnf_1.STATUS_2,
                         GREATEST(
                             NVL(fnf_1.check_date, TO_DATE('01-JAN-1900', 'DD-MON-YYYY')),
                             NVL(fnf_1.LRD_V_NOTFOUND_MAX, TO_DATE('01-JAN-1900', 'DD-MON-YYYY'))
-                        ) AS LAST_RUN_DATE, 
+                        ) AS LAST_RUN_DATE,
                         ROW_NUMBER() OVER (
-                            PARTITION BY fnf_1.PART_ID 
+                            PARTITION BY fnf_1.PART_ID
                             ORDER BY NVL(fnf_1.check_date, TO_DATE('01-JAN-1900', 'DD-MON-YYYY')) DESC
                         ) AS rn
                     FROM not_f fnf_1
@@ -188,64 +193,64 @@ class SQLQueries:
                     p.prty = query_results.prty,
                     p.man_id = query_results.man_id,
                     p.module_id = query_results.module_id
-                    
+
 
     """
 
     q_update_files_table = """
                     UPDATE uploaded_files
-                    SET 
+                    SET
                         LAST_CHECK_DATE = TO_DATE('{datetime.now().date().strftime('%Y-%m-%d')}', 'YYYY-MM-DD')
                     WHERE file_name in {files_string}
-                    
+
             """
 
 
     #found Queries
     q_file_id = """
-                SELECT id 
-                FROM uploaded_files 
+                SELECT id
+                FROM uploaded_files
                 WHERE file_name IN {files_string}
             """
 
     q_module_table_name = """
                             SELECT DISTINCT
                                 m.module_name,
-                                m.MAN_ID, 
+                                m.MAN_ID,
                                 m.MODULE_ID
-                            FROM 
+                            FROM
                                 (SELECT * FROM parts) p
-                            LEFT JOIN 
-                                updatesys.tbl_man_modules@new3_n m 
-                            ON 
+                            LEFT JOIN
+                                updatesys.tbl_man_modules@new3_n m
+                            ON
                                 p.MODULE = m.MODULE_NAME
-                            WHERE 
+                            WHERE
                                 m.MAN_ID IS NOT NULL
                                 AND m.MODULE_ID IS NOT NULL
                                 AND p.file_id = :file_id
                         """
 
     q_get_table_name = """updatesys.tbl_{man_id}_{module_id}@new3_n"""
-    
+
     q_found_status = """
                                     MERGE INTO parts tgt
                                     USING (
                                         WITH RankedFeatures AS (
-                                            SELECT 
+                                            SELECT
                                                 p.ID AS PART_ID,
                                                 p.PART,
                                                 cm.XLP_RELEASEDATE_FUNCTION_D(tbl.DAT) AS NEW_LAST_RUN_DATE,
                                                 tbl.FEATURE_NAME,
                                                 RANK() OVER (PARTITION BY p.ID, p.PART ORDER BY tbl.DAT DESC) AS rnk
-                                            FROM 
+                                            FROM
                                                 (SELECT * FROM parts WHERE module = '{module_name}') p
-                                            JOIN 
+                                            JOIN
                                                 (SELECT DISTINCT PART, FEATURE_NAME, DAT
                                                 FROM {table_name}) tbl
-                                            ON 
+                                            ON
                                                 p.PART = tbl.PART
                                         )
-                                        SELECT 
+                                        SELECT
                                             PART_ID,
                                             PART,
                                             TO_CLOB(
@@ -254,34 +259,34 @@ class SQLQueries:
                                                 ).GetClobVal()
                                             ) AS FEATURES,
                                             TO_DATE(NEW_LAST_RUN_DATE, 'DD-MON-YY') as NEW_LAST_RUN_DATE
-                                        FROM 
+                                        FROM
                                             RankedFeatures
-                                        WHERE 
+                                        WHERE
                                             rnk = 1
-                                        GROUP BY 
+                                        GROUP BY
                                             PART_ID,
                                             PART,
                                             NEW_LAST_RUN_DATE
                                     ) src
                                     ON (tgt.ID = src.PART_ID AND tgt.PART = src.PART)
                                     WHEN MATCHED THEN
-                                        UPDATE 
-                                        SET 
+                                        UPDATE
+                                        SET
                                             tgt."Features" = FEATURES,
-                                            tgt.LAST_RUN_DATE = CASE 
-                                                WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE > tgt.LAST_RUN_DATE) 
+                                            tgt.LAST_RUN_DATE = CASE
+                                                WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE > tgt.LAST_RUN_DATE)
                                                 THEN TO_DATE(src.NEW_LAST_RUN_DATE, 'DD-MON-YY')
                                                 ELSE TO_DATE(tgt.LAST_RUN_DATE, 'DD-MON-YY')
                                             END,
-                                            tgt.status = CASE 
-                                                WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE >= tgt.LAST_RUN_DATE) 
-                                                THEN 'found' 
-                                                ELSE tgt.status 
+                                            tgt.status = CASE
+                                                WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE >= tgt.LAST_RUN_DATE)
+                                                THEN 'found'
+                                                ELSE tgt.status
                                             END,
-                                            tgt.TABLE_NAME = CASE 
+                                            tgt.TABLE_NAME = CASE
                                                 WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE >= tgt.LAST_RUN_DATE) and tgt.TABLE_NAME <> 'not SE part'
-                                                THEN 'found' 
-                                                ELSE tgt.TABLE_NAME 
+                                                THEN 'found'
+                                                ELSE tgt.TABLE_NAME
                                             END
                                 """
 
@@ -289,46 +294,46 @@ class SQLQueries:
                                     MERGE INTO parts tgt
                                     USING (
                                         WITH RankedFeatures AS (
-                                            SELECT 
+                                            SELECT
                                                 p.ID AS PART_ID,
                                                 p.PART,
                                                 cm.XLP_RELEASEDATE_FUNCTION_D(tbl.DAT) AS NEW_LAST_RUN_DATE,
                                                 RANK() OVER (PARTITION BY p.ID, p.PART ORDER BY tbl.DAT DESC) AS rnk
-                                            FROM 
+                                            FROM
                                                 (SELECT * FROM parts WHERE module = '{module_name}') p
-                                            JOIN 
+                                            JOIN
                                                 (SELECT DISTINCT PART, DAT
                                                 FROM {table_name}) tbl
-                                            ON 
+                                            ON
                                                 p.PART = tbl.PART
                                         )
                                         SELECT DISTINCT
                                             PART_ID,
                                             PART,
                                             TO_DATE(NEW_LAST_RUN_DATE, 'DD-MON-YY') as NEW_LAST_RUN_DATE
-                                        FROM 
+                                        FROM
                                             RankedFeatures
-                                        WHERE 
+                                        WHERE
                                             rnk = 1
                                     ) src
                                     ON (tgt.ID = src.PART_ID AND tgt.PART = src.PART)
                                     WHEN MATCHED THEN
-                                        UPDATE 
-                                        SET 
-                                            tgt.LAST_RUN_DATE = CASE 
-                                                WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE > tgt.LAST_RUN_DATE) 
+                                        UPDATE
+                                        SET
+                                            tgt.LAST_RUN_DATE = CASE
+                                                WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE > tgt.LAST_RUN_DATE)
                                                 THEN TO_DATE(src.NEW_LAST_RUN_DATE, 'DD-MON-YY')
                                                 ELSE TO_DATE(tgt.LAST_RUN_DATE, 'DD-MON-YY')
                                             END,
-                                            tgt.status = CASE 
-                                                WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE >= tgt.LAST_RUN_DATE) 
-                                                THEN 'found' 
-                                                ELSE tgt.status 
+                                            tgt.status = CASE
+                                                WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE >= tgt.LAST_RUN_DATE)
+                                                THEN 'found'
+                                                ELSE tgt.status
                                             END,
-                                            tgt.TABLE_NAME = CASE 
+                                            tgt.TABLE_NAME = CASE
                                                 WHEN src.NEW_LAST_RUN_DATE IS NOT NULL AND (tgt.LAST_RUN_DATE IS NULL OR src.NEW_LAST_RUN_DATE >= tgt.LAST_RUN_DATE) and tgt.TABLE_NAME <> 'not SE part'
-                                                THEN 'found' 
-                                                ELSE tgt.TABLE_NAME 
+                                                THEN 'found'
+                                                ELSE tgt.TABLE_NAME
                                             END
                                 """
 

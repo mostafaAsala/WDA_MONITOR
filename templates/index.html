@@ -185,12 +185,14 @@
 	<!-- Navigation Bar -->
 	<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
 		<div class="container-fluid">
-			<a class="navbar-brand" href="/">WDA Monitor</a>
+			<a class="navbar-brand" href="/">
+				<i class="fas fa-chart-line me-2"></i>WDA Monitor
+			</a>
 			<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
 				<span class="navbar-toggler-icon"></span>
 			</button>
 			<div class="collapse navbar-collapse" id="navbarNav">
-				<ul class="navbar-nav">
+				<ul class="navbar-nav me-auto">
 					<li class="nav-item">
 						<a class="nav-link active" href="/">Home</a>
 					</li>
@@ -201,36 +203,30 @@
 						<a class="nav-link" href="/import-status">Import Status</a>
 					</li>
 				</ul>
+				<ul class="navbar-nav">
+					<li class="navbar-text me-3">
+						<i class="fas fa-user me-1"></i>
+						<span id="userFullName">{{ user.full_name if user else 'User' }}</span>
+						<span class="badge bg-light text-dark ms-1" id="userRole">{{ user.role if user else 'Unknown' }}</span>
+					</li>
+					{% if user and user.role == 'admin' %}
+					<li class="nav-item">
+						<a class="nav-link" href="/admin/dashboard">
+							<i class="fas fa-cog me-1"></i>Admin
+						</a>
+					</li>
+					{% endif %}
+					<li class="nav-item">
+						<a class="nav-link" href="#" onclick="logout()">
+							<i class="fas fa-sign-out-alt me-1"></i>Logout
+						</a>
+					</li>
+				</ul>
 			</div>
 		</div>
 	</nav>
 
-	<!-- Login Modal -->
-	<div class="modal fade" id="loginModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
-		<div class="modal-dialog">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title">Login Required</h5>
-				</div>
-				<div class="modal-body">
-					<form id="loginForm">
-						<div class="mb-3">
-							<label for="username" class="form-label">Username</label>
-							<input type="text" class="form-control" id="username" required>
-						</div>
-						<div class="mb-3">
-							<label for="password" class="form-label">Password</label>
-							<input type="password" class="form-control" id="password" required>
-						</div>
-						<div class="text-danger mb-3" id="loginError" style="display: none;">
-							Invalid username or password
-						</div>
-						<button type="submit" class="btn btn-primary">Login</button>
-					</form>
-				</div>
-			</div>
-		</div>
-	</div>
+
 
 	<div class="container-fluid mt-5">
 		<div class="text-center mb-5">
@@ -447,35 +443,56 @@
 
 
 
-		// Login functionality
-		const loginModal = new bootstrap.Modal(document.getElementById('loginModal'), {
-			backdrop: 'static',
-			keyboard: false
-		});
+		// Authentication functions
+		async function checkAuth() {
+			try {
+				const response = await fetch('/check-auth');
+				const data = await response.json();
 
-		function checkLoginStatus() {
-			const loginData = localStorage.getItem('loginData');
-			if (loginData) {
-				const { timestamp } = JSON.parse(loginData);
-				const oneDayInMs = 24 * 60 * 60 * 1000;
-				if (Date.now() - timestamp < oneDayInMs) {
+				if (data.authenticated) {
+					// Update user info in navbar
+					document.getElementById('userFullName').textContent = data.user.full_name;
+					document.getElementById('userRole').textContent = data.user.role;
+
+					// Store user info for client-side reference
+					localStorage.setItem('userInfo', JSON.stringify(data.user));
+
 					return true;
+				} else {
+					// Redirect to login page
+					window.location.href = '/login';
+					return false;
 				}
-				localStorage.removeItem('loginData');
+			} catch (error) {
+				console.error('Auth check failed:', error);
+				window.location.href = '/login';
+				return false;
 			}
-			return false;
+		}
+
+		async function logout() {
+			try {
+				const response = await fetch('/logout', { method: 'POST' });
+				if (response.ok) {
+					localStorage.removeItem('userInfo');
+					window.location.href = '/login';
+				}
+			} catch (error) {
+				console.error('Logout failed:', error);
+				// Force redirect even if logout request fails
+				localStorage.removeItem('userInfo');
+				window.location.href = '/login';
+			}
 		}
 
 		// Event Listeners
-		document.addEventListener('DOMContentLoaded', () => {
-			if (checkLoginStatus()) {
-				document.querySelector('.container-fluid').style.display = 'block';
+		document.addEventListener('DOMContentLoaded', async () => {
+			const isAuthenticated = await checkAuth();
+			if (isAuthenticated) {
 				// Start status polling
 				statusPollInterval = setInterval(pollFileStatus, 2000);
 				// Get scheduled files
 				updateScheduledFiles();
-			} else {
-				loginModal.show();
 			}
 		});
 
@@ -519,24 +536,7 @@
 			}
 		});
 
-		// Update login form handler to start polling after successful login
-		document.getElementById('loginForm').addEventListener('submit', (e) => {
-			e.preventDefault();
-			const username = document.getElementById('username').value;
-			const password = document.getElementById('password').value;
 
-			if (username === 'WDA' && password === 'admin') {
-				localStorage.setItem('loginData', JSON.stringify({
-					timestamp: Date.now()
-				}));
-				loginModal.hide();
-				document.querySelector('.container-fluid').style.display = 'block';
-				// Start status polling after successful login
-				statusPollInterval = setInterval(pollFileStatus, 2000); // Poll every 2 seconds
-			} else {
-				document.getElementById('loginError').style.display = 'block';
-			}
-		});
 
 		// File operations event listeners
 

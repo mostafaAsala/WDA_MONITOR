@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - WDA Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .navbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px 15px 0 0 !important;
+            border: none;
+        }
+        .table {
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .table thead th {
+            background-color: #f8f9fa;
+            border: none;
+            font-weight: 600;
+        }
+        .badge {
+            font-size: 0.75rem;
+        }
+        .log-entry {
+            border-left: 4px solid #667eea;
+            padding-left: 1rem;
+            margin-bottom: 1rem;
+            background: white;
+            border-radius: 0 10px 10px 0;
+            padding: 1rem;
+        }
+        .log-timestamp {
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+        .log-action {
+            font-weight: 600;
+            color: #495057;
+        }
+        .log-details {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .stats-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+        }
+        .stats-number {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        .refresh-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 10px;
+        }
+        .action-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+        }
+        .action-LOGIN { background-color: #d4edda; color: #155724; }
+        .action-LOGOUT { background-color: #f8d7da; color: #721c24; }
+        .action-STATUS_CHECK { background-color: #d1ecf1; color: #0c5460; }
+        .action-FILE_UPLOAD { background-color: #fff3cd; color: #856404; }
+        .action-PERMISSION_DENIED { background-color: #f5c6cb; color: #721c24; }
+        .action-ADMIN_ACCESS_DENIED { background-color: #f5c6cb; color: #721c24; }
+        .action-PAGE_ACCESS { background-color: #e2e3e5; color: #383d41; }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-chart-line me-2"></i>WDA Monitor - Admin Dashboard
+            </a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/">
+                    <i class="fas fa-home me-1"></i>Main Dashboard
+                </a>
+                <a class="nav-link" href="#" onclick="logout()">
+                    <i class="fas fa-sign-out-alt me-1"></i>Logout
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid mt-4">
+        <!-- Statistics Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-users fa-2x mb-2"></i>
+                        <div class="stats-number" id="totalUsers">-</div>
+                        <div>Total Users</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-clock fa-2x mb-2"></i>
+                        <div class="stats-number" id="activeUsers">-</div>
+                        <div>Active Sessions</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-list fa-2x mb-2"></i>
+                        <div class="stats-number" id="totalLogs">-</div>
+                        <div>Total Activities</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                        <div class="stats-number" id="securityEvents">-</div>
+                        <div>Security Events</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Users Management -->
+            <div class="col-md-6">
+                <div class="card mb-4 animate__animated animate__fadeInLeft">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-users me-2"></i>Users Management</h5>
+                        <button class="btn btn-light btn-sm" onclick="loadUsers()">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Username</th>
+                                        <th>Role</th>
+                                        <th>Full Name</th>
+                                        <th>Permissions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usersTableBody">
+                                    <!-- Users will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Activity Logs -->
+            <div class="col-md-6">
+                <div class="card mb-4 animate__animated animate__fadeInRight">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-history me-2"></i>User Activity Logs</h5>
+                        <div>
+                            <button class="btn btn-light btn-sm me-2" onclick="loadLogs()">
+                                <i class="fas fa-sync-alt"></i> Refresh
+                            </button>
+                            <button class="btn btn-light btn-sm" onclick="clearLogs()">
+                                <i class="fas fa-trash"></i> Clear
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                        <div id="logsContainer">
+                            <!-- Logs will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Modal -->
+    <div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <div class="mt-2">Loading...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let loadingModal;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+            
+            // Check authentication
+            checkAuth();
+            
+            // Load initial data
+            loadUsers();
+            loadLogs();
+            
+            // Auto-refresh logs every 30 seconds
+            setInterval(loadLogs, 30000);
+        });
+
+        function checkAuth() {
+            fetch('/check-auth')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.authenticated || data.user.role !== 'admin') {
+                        window.location.href = '/login';
+                    }
+                })
+                .catch(error => {
+                    console.error('Auth check failed:', error);
+                    window.location.href = '/login';
+                });
+        }
+
+        function showLoading() {
+            loadingModal.show();
+        }
+
+        function hideLoading() {
+            loadingModal.hide();
+        }
+
+        function showNotification(message, type = 'info') {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            notification.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
+
+        async function loadUsers() {
+            try {
+                const response = await fetch('/admin/users');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    displayUsers(data.users);
+                    document.getElementById('totalUsers').textContent = data.users.length;
+                } else {
+                    showNotification('Failed to load users', 'danger');
+                }
+            } catch (error) {
+                showNotification('Error loading users', 'danger');
+            }
+        }
+
+        function displayUsers(users) {
+            const tbody = document.getElementById('usersTableBody');
+            tbody.innerHTML = '';
+            
+            users.forEach(user => {
+                const row = document.createElement('tr');
+                
+                const roleColors = {
+                    'admin': 'danger',
+                    'manager': 'success',
+                    'operator': 'warning',
+                    'analyst': 'info',
+                    'viewer': 'secondary'
+                };
+                
+                row.innerHTML = `
+                    <td><strong>${user.username}</strong></td>
+                    <td><span class="badge bg-${roleColors[user.role] || 'secondary'}">${user.role}</span></td>
+                    <td>${user.full_name}</td>
+                    <td>
+                        ${user.permissions.map(perm => 
+                            `<span class="badge bg-light text-dark me-1">${perm}</span>`
+                        ).join('')}
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        async function loadLogs() {
+            try {
+                const response = await fetch('/admin/user-logs');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    displayLogs(data.logs);
+                    updateStats(data.logs);
+                } else {
+                    showNotification('Failed to load logs', 'danger');
+                }
+            } catch (error) {
+                showNotification('Error loading logs', 'danger');
+            }
+        }
+
+        function displayLogs(logs) {
+            const container = document.getElementById('logsContainer');
+            container.innerHTML = '';
+            
+            if (logs.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted">No activity logs found</div>';
+                return;
+            }
+            
+            logs.slice(0, 50).forEach(log => { // Show only last 50 logs
+                const logEntry = document.createElement('div');
+                logEntry.className = 'log-entry animate__animated animate__fadeIn';
+                
+                logEntry.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <div class="log-timestamp">${log.timestamp}</div>
+                            <div class="log-action">
+                                <span class="badge action-badge action-${log.action}">${log.action}</span>
+                                <strong>${log.username}</strong>
+                            </div>
+                            ${log.details ? `<div class="log-details">${log.details}</div>` : ''}
+                        </div>
+                        <small class="text-muted">${log.ip_address}</small>
+                    </div>
+                `;
+                
+                container.appendChild(logEntry);
+            });
+        }
+
+        function updateStats(logs) {
+            document.getElementById('totalLogs').textContent = logs.length;
+            
+            // Count security events (failed logins, permission denied)
+            const securityEvents = logs.filter(log => 
+                log.action.includes('FAILED') || 
+                log.action.includes('DENIED')
+            ).length;
+            document.getElementById('securityEvents').textContent = securityEvents;
+            
+            // Count unique active users in last hour
+            const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+            const recentUsers = new Set();
+            logs.forEach(log => {
+                const logTime = new Date(log.timestamp);
+                if (logTime > oneHourAgo && log.action === 'LOGIN') {
+                    recentUsers.add(log.username);
+                }
+            });
+            document.getElementById('activeUsers').textContent = recentUsers.size;
+        }
+
+        function clearLogs() {
+            if (confirm('Are you sure you want to clear all activity logs? This action cannot be undone.')) {
+                showNotification('Log clearing functionality would be implemented here', 'info');
+            }
+        }
+
+        async function logout() {
+            try {
+                const response = await fetch('/logout', { method: 'POST' });
+                if (response.ok) {
+                    localStorage.removeItem('userInfo');
+                    window.location.href = '/login';
+                }
+            } catch (error) {
+                console.error('Logout failed:', error);
+            }
+        }
+    </script>
+</body>
+</html>
