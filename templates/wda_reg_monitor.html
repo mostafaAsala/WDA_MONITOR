@@ -213,6 +213,131 @@
         .navbar {
             margin-bottom: 20px;
         }
+
+        /* Enhanced visual effects */
+        .chart-container {
+            transition: all 0.3s ease;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .chart-container:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+
+        .stat-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .stat-card:hover::before {
+            opacity: 1;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.2);
+        }
+
+        .stat-icon {
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover .stat-icon {
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        /* Loading animations */
+        .chart-loading {
+            background: linear-gradient(45deg, rgba(255,255,255,0.9), rgba(248,249,250,0.9));
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .chart-container {
+                margin-bottom: 2rem;
+            }
+
+            .stat-card {
+                margin-bottom: 1rem;
+            }
+
+            .filter-section {
+                padding: 15px;
+            }
+
+            .chart-header h4 {
+                font-size: 1.1rem;
+            }
+        }
+
+        /* Custom scrollbar for data table */
+        .data-table-container::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        .data-table-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .data-table-container::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+
+        .data-table-container::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+
+        /* Enhanced filter controls */
+        .filter-wrapper {
+            position: relative;
+        }
+
+        .filter-wrapper label {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 5px;
+        }
+
+        .select2-container--default .select2-selection--multiple {
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .select2-container--default .select2-selection--multiple:focus-within {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+        }
+
+        /* Pulse animation for loading states */
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .loading-pulse {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
     </style>
 </head>
 <body>
@@ -307,6 +432,7 @@
                         <small class="text-muted">
                             <div id="dataTimestamp">Loading...</div>
                             <div id="dataRecordCount">Loading...</div>
+                            <div id="dataSource">Loading...</div>
                         </small>
                     </div>
                 </div>
@@ -352,6 +478,45 @@
                         </div>
                         <div class="position-relative h-100">
                             <div id="priorityChart"></div>
+                            <div class="chart-loading">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Second Row Charts -->
+                <div class="row mt-4">
+                    <!-- Manufacturer Distribution Chart -->
+                    <div class="col-md-6 chart-container">
+                        <div class="chart-header">
+                            <h4>Top Manufacturers</h4>
+                            <button class="download-btn" onclick="downloadChart('manufacturerChart')">
+                                <i class="fas fa-download"></i>
+                            </button>
+                        </div>
+                        <div class="position-relative h-100">
+                            <div id="manufacturerChart"></div>
+                            <div class="chart-loading">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Expired vs Active Chart -->
+                    <div class="col-md-6 chart-container">
+                        <div class="chart-header">
+                            <h4>Expired vs Active Parts</h4>
+                            <button class="download-btn" onclick="downloadChart('expiredChart')">
+                                <i class="fas fa-download"></i>
+                            </button>
+                        </div>
+                        <div class="position-relative h-100">
+                            <div id="expiredChart"></div>
                             <div class="chart-loading">
                                 <div class="spinner-border text-primary" role="status">
                                     <span class="visually-hidden">Loading...</span>
@@ -439,7 +604,10 @@
                     rawData = result.data;
                     filteredData = [...rawData];
                     updateUI();
-                    showNotification('Data loaded successfully', 'success');
+
+                    // Show different message based on data source
+                    const source = result.from_cache ? 'cache' : 'database';
+                    showNotification(`Data loaded successfully from ${source} (${result.total_records.toLocaleString()} records)`, 'success');
                 } else {
                     throw new Error(result.message || 'Failed to load data');
                 }
@@ -476,9 +644,11 @@
 
                 $('#dataTimestamp').html(`<i class="fas fa-clock"></i> Last Updated: ${timestampText}`);
                 $('#dataRecordCount').html(`<i class="fas fa-list"></i> Total Records: ${rawData.length.toLocaleString()}`);
+                $('#dataSource').html(`<i class="fas fa-database"></i> Source: Memory Cache (Fast Loading)`);
             } else {
                 $('#dataTimestamp').text('No data available');
                 $('#dataRecordCount').text('');
+                $('#dataSource').text('');
             }
         }
 
@@ -572,14 +742,21 @@
             const notRunParts = filteredData.filter(item => item.STATUS === 'not run').reduce((sum, item) => sum + item.COUNT, 0);
             const expiredParts = filteredData.filter(item => item.is_expired === true).reduce((sum, item) => sum + item.COUNT, 0);
 
+            // Calculate percentages
+            const foundPercentage = totalParts > 0 ? ((foundParts / totalParts) * 100).toFixed(1) : 0;
+            const notFoundPercentage = totalParts > 0 ? ((notFoundParts / totalParts) * 100).toFixed(1) : 0;
+            const notRunPercentage = totalParts > 0 ? ((notRunParts / totalParts) * 100).toFixed(1) : 0;
+            const expiredPercentage = totalParts > 0 ? ((expiredParts / totalParts) * 100).toFixed(1) : 0;
+
             const statsHTML = `
                 <div class="col-md-2">
-                    <div class="card stat-card total-parts">
+                    <div class="card stat-card total-parts animate__animated animate__fadeInUp">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <h6 class="card-subtitle mb-2">Total Parts</h6>
-                                    <h2 class="card-title mb-0">${totalParts.toLocaleString()}</h2>
+                                    <h2 class="card-title mb-0 counter" data-target="${totalParts}">${totalParts.toLocaleString()}</h2>
+                                    <small class="opacity-75">System-wide total</small>
                                 </div>
                                 <i class="fas fa-boxes stat-icon"></i>
                             </div>
@@ -587,12 +764,13 @@
                     </div>
                 </div>
                 <div class="col-md-2">
-                    <div class="card stat-card found-parts">
+                    <div class="card stat-card found-parts animate__animated animate__fadeInUp" style="animation-delay: 0.1s;">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <h6 class="card-subtitle mb-2">Found Parts</h6>
-                                    <h2 class="card-title mb-0">${foundParts.toLocaleString()}</h2>
+                                    <h2 class="card-title mb-0 counter" data-target="${foundParts}">${foundParts.toLocaleString()}</h2>
+                                    <small class="opacity-75">${foundPercentage}% of total</small>
                                 </div>
                                 <i class="fas fa-check-circle stat-icon"></i>
                             </div>
@@ -600,12 +778,13 @@
                     </div>
                 </div>
                 <div class="col-md-2">
-                    <div class="card stat-card not-found-parts">
+                    <div class="card stat-card not-found-parts animate__animated animate__fadeInUp" style="animation-delay: 0.2s;">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <h6 class="card-subtitle mb-2">Not Found</h6>
-                                    <h2 class="card-title mb-0">${notFoundParts.toLocaleString()}</h2>
+                                    <h2 class="card-title mb-0 counter" data-target="${notFoundParts}">${notFoundParts.toLocaleString()}</h2>
+                                    <small class="opacity-75">${notFoundPercentage}% of total</small>
                                 </div>
                                 <i class="fas fa-times-circle stat-icon"></i>
                             </div>
@@ -613,12 +792,13 @@
                     </div>
                 </div>
                 <div class="col-md-2">
-                    <div class="card stat-card not-run-parts">
+                    <div class="card stat-card not-run-parts animate__animated animate__fadeInUp" style="animation-delay: 0.3s;">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <h6 class="card-subtitle mb-2">Not Run</h6>
-                                    <h2 class="card-title mb-0">${notRunParts.toLocaleString()}</h2>
+                                    <h2 class="card-title mb-0 counter" data-target="${notRunParts}">${notRunParts.toLocaleString()}</h2>
+                                    <small class="opacity-75">${notRunPercentage}% of total</small>
                                 </div>
                                 <i class="fas fa-question-circle stat-icon"></i>
                             </div>
@@ -626,14 +806,29 @@
                     </div>
                 </div>
                 <div class="col-md-2">
-                    <div class="card stat-card expired-parts">
+                    <div class="card stat-card expired-parts animate__animated animate__fadeInUp" style="animation-delay: 0.4s;">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <h6 class="card-subtitle mb-2">Expired Parts</h6>
-                                    <h2 class="card-title mb-0">${expiredParts.toLocaleString()}</h2>
+                                    <h2 class="card-title mb-0 counter" data-target="${expiredParts}">${expiredParts.toLocaleString()}</h2>
+                                    <small class="opacity-75">${expiredPercentage}% of total</small>
                                 </div>
                                 <i class="fas fa-exclamation-circle stat-icon"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card stat-card animate__animated animate__fadeInUp" style="animation-delay: 0.5s; background: linear-gradient(45deg, #667eea, #764ba2);">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="card-subtitle mb-2">Unique Manufacturers</h6>
+                                    <h2 class="card-title mb-0">${[...new Set(filteredData.map(item => item.MAN_ID))].length}</h2>
+                                    <small class="opacity-75">Active manufacturers</small>
+                                </div>
+                                <i class="fas fa-industry stat-icon"></i>
                             </div>
                         </div>
                     </div>
@@ -641,12 +836,37 @@
             `;
 
             $('#statsCards').html(statsHTML);
+
+            // Add counter animation
+            animateCounters();
+        }
+
+        // Animate counter numbers
+        function animateCounters() {
+            $('.counter').each(function() {
+                const $this = $(this);
+                const target = parseInt($this.data('target'));
+                const duration = 1500; // 1.5 seconds
+                const increment = target / (duration / 16); // 60fps
+                let current = 0;
+
+                const timer = setInterval(() => {
+                    current += increment;
+                    if (current >= target) {
+                        current = target;
+                        clearInterval(timer);
+                    }
+                    $this.text(Math.floor(current).toLocaleString());
+                }, 16);
+            });
         }
 
         // Update charts
         function updateCharts() {
             updateStatusChart();
             updatePriorityChart();
+            updateManufacturerChart();
+            updateExpiredChart();
             updateTimelineChart();
         }
 
@@ -657,25 +877,66 @@
                 statusCounts[item.STATUS] = (statusCounts[item.STATUS] || 0) + item.COUNT;
             });
 
+            // Define colors for different statuses
+            const statusColors = {
+                'found': '#2ecc71',
+                'not found': '#e74c3c',
+                'not run': '#f39c12'
+            };
+
+            const labels = Object.keys(statusCounts);
+            const values = Object.values(statusCounts);
+            const colors = labels.map(label => statusColors[label] || '#95a5a6');
+
             const data = [{
-                values: Object.values(statusCounts),
-                labels: Object.keys(statusCounts),
+                values: values,
+                labels: labels,
                 type: 'pie',
                 hole: 0.4,
-                textinfo: 'label+percent',
-                hoverinfo: 'label+value+percent',
+                textinfo: 'label+percent+value',
+                textposition: 'auto',
+                hovertemplate: '<b>%{label}</b><br>' +
+                              'Count: %{value:,}<br>' +
+                              'Percentage: %{percent}<br>' +
+                              '<extra></extra>',
                 marker: {
-                    colors: ['#2ecc71', '#e74c3c', '#f39c12']
+                    colors: colors,
+                    line: {
+                        color: '#ffffff',
+                        width: 2
+                    }
+                },
+                textfont: {
+                    size: 12,
+                    color: '#ffffff'
                 }
             }];
 
             const layout = {
                 height: 350,
-                margin: { t: 50, b: 50, l: 50, r: 50 },
-                showlegend: true
+                margin: { t: 30, b: 30, l: 30, r: 30 },
+                showlegend: true,
+                legend: {
+                    orientation: 'v',
+                    x: 1.02,
+                    y: 0.5
+                },
+                font: {
+                    family: 'Arial, sans-serif',
+                    size: 12
+                },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)'
             };
 
-            Plotly.newPlot('statusChart', data, layout, {responsive: true});
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d', 'autoScale2d'],
+                displaylogo: false
+            };
+
+            Plotly.newPlot('statusChart', data, layout, config);
         }
 
         // Update priority distribution chart
@@ -685,53 +946,341 @@
                 priorityCounts[item.PRTY] = (priorityCounts[item.PRTY] || 0) + item.COUNT;
             });
 
+            // Sort priorities for better visualization
+            const sortedPriorities = Object.keys(priorityCounts).sort();
+            const values = sortedPriorities.map(priority => priorityCounts[priority]);
+
+            // Create gradient colors based on priority
+            const colors = sortedPriorities.map((priority, index) => {
+                const intensity = (index + 1) / sortedPriorities.length;
+                return `rgba(52, 152, 219, ${0.4 + intensity * 0.6})`;
+            });
+
             const data = [{
-                x: Object.keys(priorityCounts),
-                y: Object.values(priorityCounts),
+                x: sortedPriorities,
+                y: values,
                 type: 'bar',
+                text: values.map(v => v.toLocaleString()),
+                textposition: 'auto',
+                hovertemplate: '<b>Priority: %{x}</b><br>' +
+                              'Count: %{y:,}<br>' +
+                              '<extra></extra>',
                 marker: {
-                    color: '#3498db'
+                    color: colors,
+                    line: {
+                        color: '#2980b9',
+                        width: 1
+                    }
                 }
             }];
 
             const layout = {
                 height: 350,
-                margin: { t: 50, b: 50, l: 50, r: 50 },
-                xaxis: { title: 'Priority' },
-                yaxis: { title: 'Count' }
+                margin: { t: 30, b: 80, l: 60, r: 30 },
+                xaxis: {
+                    title: {
+                        text: 'Priority',
+                        font: { size: 14, color: '#2c3e50' }
+                    },
+                    tickangle: -45,
+                    tickfont: { size: 12 }
+                },
+                yaxis: {
+                    title: {
+                        text: 'Count',
+                        font: { size: 14, color: '#2c3e50' }
+                    },
+                    tickformat: ',',
+                    tickfont: { size: 12 }
+                },
+                font: {
+                    family: 'Arial, sans-serif'
+                },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                bargap: 0.3
             };
 
-            Plotly.newPlot('priorityChart', data, layout, {responsive: true});
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d', 'autoScale2d'],
+                displaylogo: false
+            };
+
+            Plotly.newPlot('priorityChart', data, layout, config);
         }
 
         // Update timeline chart
         function updateTimelineChart() {
             const timelineCounts = {};
+            const statusTimeline = {};
+
             filteredData.forEach(item => {
-                if (item.LR_DATE && item.LR_DATE !== 'NaT') {
+                if (item.LR_DATE && item.LR_DATE !== 'NaT' && item.LR_DATE !== 'null') {
                     const date = item.LR_DATE.split(' ')[0]; // Get date part only
-                    timelineCounts[date] = (timelineCounts[date] || 0) + item.COUNT;
+                    const status = item.STATUS;
+
+                    if (!timelineCounts[date]) {
+                        timelineCounts[date] = 0;
+                        statusTimeline[date] = {};
+                    }
+
+                    timelineCounts[date] += item.COUNT;
+                    statusTimeline[date][status] = (statusTimeline[date][status] || 0) + item.COUNT;
                 }
             });
 
             const sortedDates = Object.keys(timelineCounts).sort();
-            const data = [{
+
+            if (sortedDates.length === 0) {
+                // Show empty state
+                const layout = {
+                    height: 350,
+                    margin: { t: 30, b: 50, l: 60, r: 30 },
+                    annotations: [{
+                        text: 'No timeline data available',
+                        xref: 'paper',
+                        yref: 'paper',
+                        x: 0.5,
+                        y: 0.5,
+                        xanchor: 'center',
+                        yanchor: 'middle',
+                        showarrow: false,
+                        font: { size: 16, color: '#7f8c8d' }
+                    }],
+                    xaxis: { visible: false },
+                    yaxis: { visible: false },
+                    paper_bgcolor: 'rgba(0,0,0,0)',
+                    plot_bgcolor: 'rgba(0,0,0,0)'
+                };
+                Plotly.newPlot('timelineChart', [], layout, {responsive: true});
+                return;
+            }
+
+            // Create traces for each status
+            const traces = [];
+            const statusColors = {
+                'found': '#2ecc71',
+                'not found': '#e74c3c',
+                'not run': '#f39c12'
+            };
+
+            // Total count line
+            traces.push({
                 x: sortedDates,
                 y: sortedDates.map(date => timelineCounts[date]),
                 type: 'scatter',
                 mode: 'lines+markers',
-                line: { color: '#2ecc71', width: 2 },
-                marker: { color: '#27ae60', size: 8 }
+                name: 'Total Count',
+                line: {
+                    color: '#3498db',
+                    width: 3,
+                    shape: 'spline'
+                },
+                marker: {
+                    color: '#2980b9',
+                    size: 8,
+                    line: { color: '#ffffff', width: 2 }
+                },
+                hovertemplate: '<b>%{x}</b><br>' +
+                              'Total Count: %{y:,}<br>' +
+                              '<extra></extra>'
+            });
+
+            // Status-specific lines
+            Object.keys(statusColors).forEach(status => {
+                const statusData = sortedDates.map(date =>
+                    statusTimeline[date] && statusTimeline[date][status] ? statusTimeline[date][status] : 0
+                );
+
+                if (statusData.some(val => val > 0)) {
+                    traces.push({
+                        x: sortedDates,
+                        y: statusData,
+                        type: 'scatter',
+                        mode: 'lines',
+                        name: status.charAt(0).toUpperCase() + status.slice(1),
+                        line: {
+                            color: statusColors[status],
+                            width: 2,
+                            dash: 'dot'
+                        },
+                        hovertemplate: '<b>%{x}</b><br>' +
+                                      status.charAt(0).toUpperCase() + status.slice(1) + ': %{y:,}<br>' +
+                                      '<extra></extra>'
+                    });
+                }
+            });
+
+            const layout = {
+                height: 350,
+                margin: { t: 30, b: 80, l: 60, r: 30 },
+                xaxis: {
+                    title: {
+                        text: 'Date',
+                        font: { size: 14, color: '#2c3e50' }
+                    },
+                    tickangle: -45,
+                    tickfont: { size: 10 },
+                    type: 'category'
+                },
+                yaxis: {
+                    title: {
+                        text: 'Count',
+                        font: { size: 14, color: '#2c3e50' }
+                    },
+                    tickformat: ',',
+                    tickfont: { size: 12 }
+                },
+                font: {
+                    family: 'Arial, sans-serif'
+                },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                legend: {
+                    orientation: 'h',
+                    x: 0.5,
+                    xanchor: 'center',
+                    y: -0.2
+                },
+                hovermode: 'x unified'
+            };
+
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d', 'autoScale2d'],
+                displaylogo: false
+            };
+
+            Plotly.newPlot('timelineChart', traces, layout, config);
+        }
+
+        // Update manufacturer distribution chart
+        function updateManufacturerChart() {
+            const manufacturerCounts = {};
+            filteredData.forEach(item => {
+                manufacturerCounts[item.MAN_ID] = (manufacturerCounts[item.MAN_ID] || 0) + item.COUNT;
+            });
+
+            // Get top 10 manufacturers
+            const sortedManufacturers = Object.entries(manufacturerCounts)
+                .sort(([,a], [,b]) => b - a)
+                .slice(0, 10);
+
+            const data = [{
+                x: sortedManufacturers.map(([name, count]) => name),
+                y: sortedManufacturers.map(([name, count]) => count),
+                type: 'bar',
+                text: sortedManufacturers.map(([name, count]) => count.toLocaleString()),
+                textposition: 'auto',
+                hovertemplate: '<b>Manufacturer: %{x}</b><br>' +
+                              'Count: %{y:,}<br>' +
+                              '<extra></extra>',
+                marker: {
+                    color: sortedManufacturers.map((_, index) => {
+                        const intensity = (sortedManufacturers.length - index) / sortedManufacturers.length;
+                        return `rgba(155, 89, 182, ${0.4 + intensity * 0.6})`;
+                    }),
+                    line: {
+                        color: '#8e44ad',
+                        width: 1
+                    }
+                }
             }];
 
             const layout = {
                 height: 350,
-                margin: { t: 50, b: 50, l: 50, r: 50 },
-                xaxis: { title: 'Date', tickangle: -45 },
-                yaxis: { title: 'Count' }
+                margin: { t: 30, b: 80, l: 60, r: 30 },
+                xaxis: {
+                    title: {
+                        text: 'Manufacturer ID',
+                        font: { size: 14, color: '#2c3e50' }
+                    },
+                    tickangle: -45,
+                    tickfont: { size: 10 }
+                },
+                yaxis: {
+                    title: {
+                        text: 'Count',
+                        font: { size: 14, color: '#2c3e50' }
+                    },
+                    tickformat: ',',
+                    tickfont: { size: 12 }
+                },
+                font: {
+                    family: 'Arial, sans-serif'
+                },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                bargap: 0.3
             };
 
-            Plotly.newPlot('timelineChart', data, layout, {responsive: true});
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d', 'autoScale2d'],
+                displaylogo: false
+            };
+
+            Plotly.newPlot('manufacturerChart', data, layout, config);
+        }
+
+        // Update expired vs active chart
+        function updateExpiredChart() {
+            const expiredCount = filteredData.filter(item => item.is_expired === true).reduce((sum, item) => sum + item.COUNT, 0);
+            const activeCount = filteredData.filter(item => item.is_expired === false).reduce((sum, item) => sum + item.COUNT, 0);
+
+            const data = [{
+                values: [activeCount, expiredCount],
+                labels: ['Active', 'Expired'],
+                type: 'pie',
+                hole: 0.4,
+                textinfo: 'label+percent+value',
+                textposition: 'auto',
+                hovertemplate: '<b>%{label}</b><br>' +
+                              'Count: %{value:,}<br>' +
+                              'Percentage: %{percent}<br>' +
+                              '<extra></extra>',
+                marker: {
+                    colors: ['#27ae60', '#e67e22'],
+                    line: {
+                        color: '#ffffff',
+                        width: 2
+                    }
+                },
+                textfont: {
+                    size: 12,
+                    color: '#ffffff'
+                }
+            }];
+
+            const layout = {
+                height: 350,
+                margin: { t: 30, b: 30, l: 30, r: 30 },
+                showlegend: true,
+                legend: {
+                    orientation: 'v',
+                    x: 1.02,
+                    y: 0.5
+                },
+                font: {
+                    family: 'Arial, sans-serif',
+                    size: 12
+                },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)'
+            };
+
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d', 'autoScale2d'],
+                displaylogo: false
+            };
+
+            Plotly.newPlot('expiredChart', data, layout, config);
         }
 
         // Update data table

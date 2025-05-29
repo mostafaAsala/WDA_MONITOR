@@ -118,14 +118,54 @@ os.environ["PATH"] = os.path.join(os.path.dirname(__file__), Config.INSTANT_CLIE
 # Global DataFrames
 global_df = None
 grouped_data = None
-
 filtered_data = None
+
+# WDA_Reg system data cache
+wda_reg_system_data = pd.DataFrame()
+wda_reg_data_lock = threading.Lock()
+wda_reg_data_loaded = False
 
 def load_module_data():
 	#load data from matrix man- module- running status - comment - old
 	#load direct Feed suppliers
 	#load man module table
 	pass
+
+def load_wda_reg_system_data():
+	"""Load WDA_Reg system data into memory for fast access"""
+	global wda_reg_system_data, wda_reg_data_loaded
+
+	try:
+		with wda_reg_data_lock:
+			system_monitor_dir = os.path.join(os.getcwd(), "system_Monitor")
+			latest_filepath = os.path.join(system_monitor_dir, "wda_reg_system_data_latest.csv")
+
+			if os.path.exists(latest_filepath):
+				# Load data from cached file
+				wda_reg_system_data = pd.read_csv(latest_filepath)
+
+				# Convert date columns back to datetime
+				date_columns = ['LRD2', 'V_NOTFOUND_DAT2', 'LR_DATE', 'download_timestamp']
+				for col in date_columns:
+					if col in wda_reg_system_data.columns:
+						wda_reg_system_data[col] = pd.to_datetime(wda_reg_system_data[col], errors='coerce')
+
+				# Convert boolean column
+				if 'is_expired' in wda_reg_system_data.columns:
+					wda_reg_system_data['is_expired'] = wda_reg_system_data['is_expired'].astype(bool)
+
+				wda_reg_data_loaded = True
+				print(f"WDA_Reg system data loaded into memory: {len(wda_reg_system_data)} records")
+				return True
+			else:
+				print("WDA_Reg system data file not found, will be created on first access")
+				wda_reg_data_loaded = False
+				return False
+
+	except Exception as e:
+		print(f"Error loading WDA_Reg system data: {e}")
+		wda_reg_data_loaded = False
+		return False
 
 def load_data():
 	global global_df
@@ -181,6 +221,10 @@ def load_data():
 		print(grouped_data.columns)
 		print(grouped_data)
 		print("Length of data: ",len(global_df), len(grouped_data), grouped_data['count'].sum())
+
+		# Also load WDA_Reg system data
+		load_wda_reg_system_data()
+
 		return True
 	except Exception as e:
 		print(f"Error loading data: {e}")
@@ -1372,31 +1416,48 @@ def get_status_by_date():
 @login_required
 @permission_required('view')
 def get_wda_reg_data():
-    """API endpoint to fetch WDA_Reg aggregated data"""
+    """API endpoint to fetch WDA_Reg aggregated data from memory cache"""
     username = session['username']
     try:
-        app.logger.info(f'User {username} fetching WDA_Reg aggregated data')
-        log_user_activity(username, 'WDA_REG_DATA_ACCESS', 'Accessed WDA_Reg aggregated data')
+        app.logger.info(f'User {username} fetching WDA_Reg aggregated data from cache')
+        log_user_activity(username, 'WDA_REG_DATA_ACCESS', 'Accessed WDA_Reg aggregated data from cache')
 
-        # Get the aggregated data
-        df = get_wda_reg_aggregated_data()
+        global wda_reg_system_data, wda_reg_data_loaded
+
+        # Check if data is loaded in memory
+        if not wda_reg_data_loaded or wda_reg_system_data.empty:
+            # Try to load data into memory
+            if not load_wda_reg_system_data():
+                # If loading fails, try to get fresh data from database
+                app.logger.warning('Loading from cache failed, fetching fresh data from database')
+                df = get_wda_reg_aggregated_data()
+            else:
+                df = wda_reg_system_data.copy()
+        else:
+            # Use cached data from memory
+            df = wda_reg_system_data.copy()
 
         # Convert datetime columns to string for JSON serialization
         df_json = df.copy()
-        date_columns = ['LRD2', 'V_NOTFOUND_DAT2', 'LR_DATE']
+        date_columns = ['LRD2', 'V_NOTFOUND_DAT2', 'LR_DATE', 'download_timestamp']
         for col in date_columns:
             if col in df_json.columns:
                 df_json[col] = df_json[col].astype(str)
 
+        # Convert boolean columns to string for JSON serialization
+        if 'is_expired' in df_json.columns:
+            df_json['is_expired'] = df_json['is_expired'].astype(str)
+
         # Convert to records format for frontend
         data_records = df_json.to_dict('records')
 
-        app.logger.info(f'Successfully fetched {len(data_records)} WDA_Reg records')
+        app.logger.info(f'Successfully served {len(data_records)} WDA_Reg records from cache')
 
         return jsonify({
             'status': 'success',
             'data': data_records,
-            'total_records': len(data_records)
+            'total_records': len(data_records),
+            'from_cache': wda_reg_data_loaded
         })
 
     except Exception as e:
@@ -1417,11 +1478,14 @@ def refresh_wda_reg_data():
         # Force download new data
         filepath = download_wda_reg_system_data()
 
-        app.logger.info(f'Successfully refreshed WDA_Reg system data to: {filepath}')
+        # Reload data into memory cache
+        load_wda_reg_system_data()
+
+        app.logger.info(f'Successfully refreshed WDA_Reg system data to: {filepath} and reloaded into memory')
 
         return jsonify({
             'status': 'success',
-            'message': 'WDA_Reg system data refreshed successfully',
+            'message': 'WDA_Reg system data refreshed and reloaded into memory successfully',
             'filepath': filepath
         })
 
@@ -1740,12 +1804,16 @@ def weekly_scheduled_upload_task():
 
 def wda_reg_system_download_task():
 	"""
-	Daily task to download WDA_Reg system aggregated data
+	Daily task to download WDA_Reg system aggregated data and reload into memory
 	"""
 	try:
 		app.logger.info('Running daily WDA_Reg system data download task')
 		download_wda_reg_system_data()
-		app.logger.info('WDA_Reg system data download task completed successfully')
+
+		# Reload data into memory cache
+		load_wda_reg_system_data()
+
+		app.logger.info('WDA_Reg system data download task completed successfully and reloaded into memory')
 	except Exception as e:
 		app.logger.error(f'Error in WDA_Reg system data download task: {str(e)}')
 # 🔹 Define TaskConfig
