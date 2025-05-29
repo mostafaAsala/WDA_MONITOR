@@ -343,7 +343,7 @@ def Get_status(files_list=None, ignore_date=True, daily_export=False):
                 status_logger.info("Updating last check dates...")
                 connection.execute(text(update_files_query))
                 status_logger.info("Last check dates updated successfully")
-                
+                connection.commit()
             except Exception as e:
                 error_msg = f"Error in database transaction: {str(e)}"
                 status_logger.error(error_msg)
@@ -530,23 +530,29 @@ def Found_parts_Status(engine, files_string):
                                 try:
                                     status_logger.info(f"Executing v_sql for module {module_name}")
                                     file_connection.execute(text(v_sql))
+                                    
                                     status_logger.info(f"Successfully executed v_sql for module {module_name}")
                                 except Exception as e:
                                     status_logger.error(f"Error executing v_sql for module {module_name}, table {table_name}: {e}")
                                     status_logger.info("Attempting to execute v_sql2...")
                                     try:
                                         file_connection.execute(text(v_sql2))
+                                        
                                         status_logger.info(f"Successfully executed v_sql2 for module {module_name}")
                                     except Exception as e2:
+                                        print(traceback.format_exc())
                                         status_logger.error(f"Error executing v_sql2 for module {module_name}, table {table_name}: {e2}")
                                         raise
                             except Exception as e:
                                 status_logger.error(f"Error processing record: {str(e)}")
                                 continue
-                                
+                        
+                        file_connection.commit()     
                     status_logger.info(f"Completed processing file ID: {file_id}")
+                    print(traceback.format_exc())
                 except Exception as e:
                     status_logger.error(f"Error processing file ID {file_id}: {str(e)}")
+                    print(traceback.format_exc())
                     continue
                     
         status_logger.info("Found_parts_Status function completed successfully")

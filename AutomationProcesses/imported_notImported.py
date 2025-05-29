@@ -141,11 +141,12 @@ def move_exported_files(export_path, work_folder, feed_hour, notApproved_hour):
                     archive.write(file_path, os.path.basename(file_path))
                 
                 # Remove original file after compression
-                os.remove(file_path)
+                #os.remove(file_path)
                 print(f"Compressed and moved not approved file to: {seven_zip_path}")
             else:
                 destination_path = os.path.join(work_folder, pattern)
-                shutil.move(file_path, destination_path)
+                print(file_path,destination_path)
+                shutil.copy(file_path, destination_path)
                 print(f"Moved: {pattern} to {work_folder}")
         else:
             print(f"File not found: {file_path}")
