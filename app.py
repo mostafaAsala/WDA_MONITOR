@@ -236,6 +236,31 @@ USERS = {
         'full_name': 'WDA Administrator',
         'permissions': ['all']
     },
+	'Nader': {
+        'password': hashlib.sha256('admin'.encode()).hexdigest(),
+        'role': 'admin',
+        'full_name': 'WDA Administrator',
+        'permissions': ['all']
+    },
+	'Heba': {
+        'password': hashlib.sha256('admin'.encode()).hexdigest(),
+        'role': 'admin',
+        'full_name': 'WDA Administrator',
+        'permissions': ['all']
+    },
+	'Abdrabu': {
+        'password': hashlib.sha256('admin'.encode()).hexdigest(),
+        'role': 'admin',
+        'full_name': 'WDA Administrator',
+        'permissions': ['all']
+    },
+	'Mostafa': {
+        'password': hashlib.sha256('admin'.encode()).hexdigest(),
+        'role': 'admin',
+        'full_name': 'WDA Administrator',
+        'permissions': ['all']
+    },
+	
     'analyst1': {
         'password': hashlib.sha256('analyst123'.encode()).hexdigest(),
         'role': 'analyst',
@@ -318,7 +343,13 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'username' not in session:
-            return jsonify({'error': 'Authentication required', 'redirect': '/login'}), 401
+            # Check if this is an AJAX/API request
+            if request.is_json or request.headers.get('Content-Type') == 'application/json':
+                return jsonify({'error': 'Authentication required', 'redirect': '/login'}), 401
+            else:
+                # For regular page requests, redirect to login
+                from flask import redirect, url_for
+                return redirect('/login')
         return f(*args, **kwargs)
     return decorated_function
 
@@ -328,12 +359,23 @@ def permission_required(permission):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if 'username' not in session:
-                return jsonify({'error': 'Authentication required', 'redirect': '/login'}), 401
+                # Check if this is an AJAX/API request
+                if request.is_json or request.headers.get('Content-Type') == 'application/json':
+                    return jsonify({'error': 'Authentication required', 'redirect': '/login'}), 401
+                else:
+                    # For regular page requests, redirect to login
+                    from flask import redirect
+                    return redirect('/login')
 
             username = session['username']
             if not has_permission(username, permission):
                 log_user_activity(username, 'PERMISSION_DENIED', f'Attempted to access {permission}')
-                return jsonify({'error': 'Insufficient permissions'}), 403
+                if request.is_json or request.headers.get('Content-Type') == 'application/json':
+                    return jsonify({'error': 'Insufficient permissions'}), 403
+                else:
+                    # For regular page requests, redirect to login with error message
+                    from flask import redirect
+                    return redirect('/login?error=insufficient_permissions')
 
             return f(*args, **kwargs)
         return decorated_function
@@ -344,13 +386,24 @@ def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'username' not in session:
-            return jsonify({'error': 'Authentication required', 'redirect': '/login'}), 401
+            # Check if this is an AJAX/API request
+            if request.is_json or request.headers.get('Content-Type') == 'application/json':
+                return jsonify({'error': 'Authentication required', 'redirect': '/login'}), 401
+            else:
+                # For regular page requests, redirect to login
+                from flask import redirect
+                return redirect('/login')
 
         username = session['username']
         user = get_user_info(username)
         if not user or user['role'] != 'admin':
             log_user_activity(username, 'ADMIN_ACCESS_DENIED', 'Attempted to access admin-only resource')
-            return jsonify({'error': 'Admin access required'}), 403
+            if request.is_json or request.headers.get('Content-Type') == 'application/json':
+                return jsonify({'error': 'Admin access required'}), 403
+            else:
+                # For regular page requests, redirect to login with error message
+                from flask import redirect
+                return redirect('/login?error=admin_required')
 
         return f(*args, **kwargs)
     return decorated_function

@@ -122,6 +122,14 @@
                 Invalid username or password. Please try again.
             </div>
 
+            <div class="alert alert-warning d-none" id="permissionError">
+                You don't have sufficient permissions to access that resource.
+            </div>
+
+            <div class="alert alert-info d-none" id="adminError">
+                Admin access is required to access that resource.
+            </div>
+
             <button type="submit" class="btn btn-primary btn-login w-100">
                 <span class="spinner-border spinner-border-sm d-none me-2" id="loginSpinner"></span>
                 Sign In
@@ -172,18 +180,18 @@
     <script>
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
             const errorDiv = document.getElementById('loginError');
             const spinner = document.getElementById('loginSpinner');
             const submitBtn = e.target.querySelector('button[type="submit"]');
-            
+
             // Show loading state
             spinner.classList.remove('d-none');
             submitBtn.disabled = true;
             errorDiv.classList.add('d-none');
-            
+
             try {
                 const response = await fetch('/login', {
                     method: 'POST',
@@ -192,9 +200,9 @@
                     },
                     body: JSON.stringify({ username, password })
                 });
-                
+
                 const result = await response.json();
-                
+
                 if (response.ok) {
                     // Store user info in localStorage for client-side reference
                     localStorage.setItem('userInfo', JSON.stringify(result.user));
@@ -214,6 +222,18 @@
             }
         });
 
+        // Check for error messages in URL parameters
+        function checkUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const error = urlParams.get('error');
+
+            if (error === 'insufficient_permissions') {
+                document.getElementById('permissionError').classList.remove('d-none');
+            } else if (error === 'admin_required') {
+                document.getElementById('adminError').classList.remove('d-none');
+            }
+        }
+
         // Check if already authenticated
         fetch('/check-auth')
             .then(response => response.json())
@@ -223,6 +243,9 @@
                 }
             })
             .catch(error => console.log('Auth check failed:', error));
+
+        // Check URL parameters on page load
+        checkUrlParams();
     </script>
 </body>
 </html>

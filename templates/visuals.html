@@ -2484,14 +2484,31 @@ async function checkAuth() {
 			return true;
 		} else {
 			// Redirect to login page
-			window.location.href = '/login';
+			window.location.replace('/login');
 			return false;
 		}
 	} catch (error) {
 		console.error('Auth check failed:', error);
-		window.location.href = '/login';
+		window.location.replace('/login');
 		return false;
 	}
+}
+
+// Global error handler for authentication errors
+function handleAuthError(response) {
+	if (response.status === 401) {
+		// Authentication required - redirect to login
+		window.location.replace('/login');
+		return true;
+	} else if (response.status === 403) {
+		// Permission denied - show error and redirect
+		alert('You do not have permission to perform this action');
+		setTimeout(() => {
+			window.location.replace('/login?error=insufficient_permissions');
+		}, 2000);
+		return true;
+	}
+	return false;
 }
 
 async function logout() {
@@ -2499,13 +2516,13 @@ async function logout() {
 		const response = await fetch('/logout', { method: 'POST' });
 		if (response.ok) {
 			localStorage.removeItem('userInfo');
-			window.location.href = '/login';
+			window.location.replace('/login');
 		}
 	} catch (error) {
 		console.error('Logout failed:', error);
 		// Force redirect even if logout request fails
 		localStorage.removeItem('userInfo');
-		window.location.href = '/login';
+		window.location.replace('/login');
 	}
 }
 
