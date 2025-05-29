@@ -35,6 +35,9 @@
                         <a class="nav-link" href="/visuals">Visualizations</a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="/wda-reg-monitor">WDA_Reg Monitor</a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link active" href="/import-status">Import Status</a>
                     </li>
                 </ul>
@@ -96,7 +99,7 @@
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div class="col-12">
                                 <button class="btn btn-primary w-100 mb-2" id="downloadReports">
                                     Stage 1: Download Reports
@@ -173,7 +176,7 @@
                                 </div>
                             </div>
 
-                            
+
 
                             <!-- Original Download Buttons for reports -->
                             <div class="row mt-3">
@@ -206,7 +209,7 @@
         function populateResultsTable(results) {
             const tbody = $('#resultsTableBody');
             tbody.empty();
-            
+
             results.forEach(row => {
                 tbody.append(`
                     <tr>
@@ -226,7 +229,7 @@
         function populateStatusSummaryTable(results) {
             const tbody = $('#statusSummaryTableBody');
             tbody.empty();
-            
+
             // Group results by date
             const groupedByDate = {};
             results.forEach(row => {
@@ -238,7 +241,7 @@
                         not_received_not_found: 0
                     };
                 }
-                
+
                 if (row.table === 'found') {
                     groupedByDate[row.date].in_progress_found = row.in_progress_count || 0;
                     groupedByDate[row.date].not_received_found = row.not_received_count || 0;
@@ -356,11 +359,11 @@
                 try {
                     const button = $(this);
                     const originalText = button.html();
-                    
+
                     // Update button state
                     button.prop('disabled', true);
                     button.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Downloading...');
-                    
+
                     showMessage('Preparing not approved file for download...', 'info');
 
                     const response = await fetch('/download-not-approved', {
@@ -420,7 +423,7 @@
                     const data = await response.json();
                     if (response.ok) {
                         showMessage('Reports downloaded successfully!', 'success');
-                        
+
                         // Populate the dates dropdown
                         const select = $('#reportDates');
                         select.empty();
@@ -475,7 +478,7 @@
             // Modify the calculate status click handler
             $('#calculateStatus').click(async function() {
                 const selectedDates = $('#reportDates').val();
-                
+
                 if (!selectedDates || selectedDates.length === 0) {
                     showMessage('Please select at least one date', 'warning');
                     return;

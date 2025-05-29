@@ -25,7 +25,7 @@ import hashlib
 print("import hashlib")
 from Parts_Upload import main_upload_parts, main_delete_file
 print("from Parts_Upload import main_upload_parts, main_delete_file")
-from check_status import Get_status, Download_results, get_status_statistics, daily_check_all
+from check_status import Get_status, Download_results, get_status_statistics, daily_check_all, get_wda_reg_aggregated_data, download_wda_reg_system_data
 print("from check_status import Get_status, Download_results, get_status_statistics, daily_check_all")
 from config import Config
 print("from config import Config")
@@ -260,7 +260,7 @@ USERS = {
         'full_name': 'WDA Administrator',
         'permissions': ['all']
     },
-	
+
     'analyst1': {
         'password': hashlib.sha256('analyst123'.encode()).hexdigest(),
         'role': 'analyst',
@@ -622,6 +622,16 @@ def visualizations():
 	log_user_activity(username, 'PAGE_ACCESS', 'Accessed visualizations page')
 	user_info = get_user_info(username)
 	return render_template('visuals.html', user=user_info)
+
+@app.route('/wda-reg-monitor')
+@login_required
+@permission_required('view')
+def wda_reg_monitor():
+	username = session['username']
+	app.logger.info(f'User {username} accessing WDA_Reg Monitor page')
+	log_user_activity(username, 'PAGE_ACCESS', 'Accessed WDA_Reg Monitor page')
+	user_info = get_user_info(username)
+	return render_template('wda_reg_monitor.html', user=user_info)
 
 @app.route('/upload', methods=['POST'])
 @login_required
@@ -1358,6 +1368,68 @@ def get_status_by_date():
     print(status_counts)
     return jsonify({"date": date, "status_counts": status_counts})
 
+@app.route('/api/wda-reg-data', methods=['GET'])
+@login_required
+@permission_required('view')
+def get_wda_reg_data():
+    """API endpoint to fetch WDA_Reg aggregated data"""
+    username = session['username']
+    try:
+        app.logger.info(f'User {username} fetching WDA_Reg aggregated data')
+        log_user_activity(username, 'WDA_REG_DATA_ACCESS', 'Accessed WDA_Reg aggregated data')
+
+        # Get the aggregated data
+        df = get_wda_reg_aggregated_data()
+
+        # Convert datetime columns to string for JSON serialization
+        df_json = df.copy()
+        date_columns = ['LRD2', 'V_NOTFOUND_DAT2', 'LR_DATE']
+        for col in date_columns:
+            if col in df_json.columns:
+                df_json[col] = df_json[col].astype(str)
+
+        # Convert to records format for frontend
+        data_records = df_json.to_dict('records')
+
+        app.logger.info(f'Successfully fetched {len(data_records)} WDA_Reg records')
+
+        return jsonify({
+            'status': 'success',
+            'data': data_records,
+            'total_records': len(data_records)
+        })
+
+    except Exception as e:
+        app.logger.error(f'Error fetching WDA_Reg data: {str(e)}')
+        log_user_activity(username, 'WDA_REG_DATA_ERROR', f'Error fetching WDA_Reg data: {str(e)}')
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/refresh-wda-reg-data', methods=['POST'])
+@login_required
+@permission_required('view')
+def refresh_wda_reg_data():
+    """API endpoint to manually refresh WDA_Reg system data"""
+    username = session['username']
+    try:
+        app.logger.info(f'User {username} manually refreshing WDA_Reg system data')
+        log_user_activity(username, 'WDA_REG_REFRESH', 'Manually refreshed WDA_Reg system data')
+
+        # Force download new data
+        filepath = download_wda_reg_system_data()
+
+        app.logger.info(f'Successfully refreshed WDA_Reg system data to: {filepath}')
+
+        return jsonify({
+            'status': 'success',
+            'message': 'WDA_Reg system data refreshed successfully',
+            'filepath': filepath
+        })
+
+    except Exception as e:
+        app.logger.error(f'Error refreshing WDA_Reg system data: {str(e)}')
+        log_user_activity(username, 'WDA_REG_REFRESH_ERROR', f'Error refreshing WDA_Reg data: {str(e)}')
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @app.route('/import-status')
 def import_status():
     return render_template('import_status.html')
@@ -1665,6 +1737,17 @@ def weekly_scheduled_upload_task():
 		app.logger.error(f'Error in weekly scheduled upload task: {str(e)}')
 	finally:
 		amazon_upload_in_progress = False
+
+def wda_reg_system_download_task():
+	"""
+	Daily task to download WDA_Reg system aggregated data
+	"""
+	try:
+		app.logger.info('Running daily WDA_Reg system data download task')
+		download_wda_reg_system_data()
+		app.logger.info('WDA_Reg system data download task completed successfully')
+	except Exception as e:
+		app.logger.error(f'Error in WDA_Reg system data download task: {str(e)}')
 # 🔹 Define TaskConfig
 class TaskConfig:
     SCHEDULER_API_ENABLED = True
@@ -1691,6 +1774,13 @@ class TaskConfig:
             'trigger': 'cron',
             'hour': 7,
             'minute': 0
+        },
+        {
+            'id': 'wda_reg_system_download',  # Unique Job ID
+            'func': 'app:wda_reg_system_download_task',  # Function to run
+            'trigger': 'cron',
+            'hour': 2,  # At 2 AM daily
+            'minute': 30
         },
         {
             'id': 'weekly_scheduled_upload',  # Unique Job ID
