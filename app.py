@@ -217,6 +217,30 @@ app = create_app()
 # Global dictionary to track file processing status
 file_status = {}
 
+# Global dictionary to track files currently being checked (in-memory only)
+files_being_checked = set()
+files_being_checked_lock = threading.Lock()
+
+def is_file_being_checked(file_name):
+    """Check if a file is currently being checked"""
+    with files_being_checked_lock:
+        return file_name in files_being_checked
+
+def add_file_to_checking(file_name):
+    """Add a file to the checking set"""
+    with files_being_checked_lock:
+        files_being_checked.add(file_name)
+
+def remove_file_from_checking(file_name):
+    """Remove a file from the checking set"""
+    with files_being_checked_lock:
+        files_being_checked.discard(file_name)
+
+def get_files_being_checked():
+    """Get a copy of files currently being checked"""
+    with files_being_checked_lock:
+        return files_being_checked.copy()
+
 # Path to store scheduled files
 SCHEDULED_FILES_PATH = os.path.join(Config.result_path, 'scheduled_files.pkl')
 
@@ -232,6 +256,11 @@ if os.path.exists(SCHEDULED_FILES_PATH):
 @app.route('/get-file-status', methods=['GET'])
 def get_file_status():
 	return jsonify(file_status)
+
+@app.route('/get-files-being-checked', methods=['GET'])
+def get_files_being_checked_endpoint():
+	"""Get list of files currently being checked"""
+	return jsonify({'files_being_checked': list(get_files_being_checked())})
 
 @app.route('/update-file-status', methods=['POST'])
 def update_file_status():
@@ -249,6 +278,8 @@ def reset_file_status():
 	for file in files:
 		if file in file_status:
 			file_status[file] = 'Idle'
+		# Also remove from checking set
+		remove_file_from_checking(file)
 	return jsonify({'status': 'success'})
 
 @app.route('/')
@@ -367,33 +398,68 @@ def check_status():
 	try:
 		app.logger.info(f'Checking status for files: {selected_files}')
 
-		# Update status to In Progress
+		# Check for files already being checked and filter them out
+		files_to_check = []
+		files_already_checking = []
+		print(selected_files, get_files_being_checked())
 		for file in selected_files:
-			file_status[file] = 'In Progress'
+			if is_file_being_checked(file):
+				files_already_checking.append(file)
+				app.logger.warning(f'File {file} is already being checked, skipping')
+			else:
+				files_to_check.append(file)
+				add_file_to_checking(file)
+				file_status[file] = 'Checking Status'
 
-		with status_lock:  # Ensure only one status check at a time
-			files_string, daily_export = Get_status(selected_files, ignore_date)
-			df, file_name  = Download_results(files_string, daily_export)
-			# Use file lock when writing results
-			with file_lock:
-				status_stats = get_status_statistics(df)
+		# If no files can be checked, return error message
+		if not files_to_check:
+			error_messages = [f"file {file} already in progress" for file in files_already_checking]
+			return jsonify({
+				'status': 'Error',
+				'message': '; '.join(error_messages),
+				'files_already_checking': files_already_checking
+			}), 400
 
-			# Reset status to Idle
-			for file in selected_files:
+		# If some files are already being checked, inform the user
+		if files_already_checking:
+			app.logger.warning(f'Some files already being checked: {files_already_checking}')
+
+		try:
+			with status_lock:  # Ensure only one status check at a time
+				files_string, daily_export = Get_status(files_to_check, ignore_date)
+				df, file_name  = Download_results(files_string, daily_export)
+				# Use file lock when writing results
+				with file_lock:
+					status_stats = get_status_statistics(df)
+
+				# Reset status to Idle and remove from checking set
+				for file in files_to_check:
+					file_status[file] = 'Idle'
+					remove_file_from_checking(file)
+
+				app.logger.info('Status check completed successfully')
+
+				message = 'Status updated successfully'
+				if files_already_checking:
+					message += f'. Note: Files already being checked were skipped: {", ".join(files_already_checking)}'
+
+				return_object = jsonify({
+					'status': 'Success',
+					'message': message,
+					'data': status_stats,
+					'files_checked': files_to_check,
+					'files_skipped': files_already_checking
+				})
+
+				return return_object
+		except Exception as e:
+			# Reset status on error and remove from checking set
+			for file in files_to_check:
 				file_status[file] = 'Idle'
+				remove_file_from_checking(file)
+			raise e
 
-			app.logger.info('Status check completed successfully')
-			return_object = jsonify({
-				'status': 'Success',
-				'message': 'Status updated successfully',
-				'data': status_stats
-			})
-
-			return return_object
 	except Exception as e:
-		# Reset status on error
-		for file in selected_files:
-			file_status[file] = 'Idle'
 		app.logger.error(f'Error checking status: {str(e)}')
 		return jsonify({'error': str(e)}), 500
 
@@ -828,7 +894,7 @@ def Get_filtered_data(df, filters):
 			axis=1
 		)
 		df = df_with_direct_feed[df_with_direct_feed['direct_feed'].isin([int(x) for x in filters['direct_feed']])]
-   
+
 	# Apply index range filter last
 	if filters.get('startIndex') is not None and filters.get('endIndex') is not None:
 		start_idx = int(filters['startIndex'])
@@ -839,7 +905,7 @@ def Get_filtered_data(df, filters):
 			print("filtered")
 
 	return df
-  
+
 @app.route('/api/download-filtered', methods=['POST'])
 def download_filtered():
 	try:

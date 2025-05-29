@@ -382,8 +382,13 @@
 					document.querySelectorAll('.status-badge').forEach(badge => {
 						const fileName = badge.dataset.filename;
 						if (statusData[fileName]) {
-							badge.className = `badge ${statusData[fileName] === 'In Progress' ? 'bg-primary' : 'bg-secondary'} status-badge`;
-							badge.textContent = statusData[fileName];
+							const status = statusData[fileName];
+							let badgeClass = 'bg-secondary';
+							if (status === 'In Progress' || status === 'Checking Status') {
+								badgeClass = 'bg-primary';
+							}
+							badge.className = `badge ${badgeClass} status-badge`;
+							badge.textContent = status;
 						}
 					});
 				})
@@ -393,7 +398,7 @@
 		// Start polling when page loads
 		let statusPollInterval;
 		document.addEventListener('DOMContentLoaded', () => {
-			statusPollInterval = setInterval(pollFileStatus, 60000); // Poll every 2 seconds
+			statusPollInterval = setInterval(pollFileStatus, 2000); // Poll every 2 seconds
 		});
 
 		// Cleanup on page unload
@@ -466,7 +471,7 @@
 			if (checkLoginStatus()) {
 				document.querySelector('.container-fluid').style.display = 'block';
 				// Start status polling
-				statusPollInterval = setInterval(pollFileStatus, 60000);
+				statusPollInterval = setInterval(pollFileStatus, 2000);
 				// Get scheduled files
 				updateScheduledFiles();
 			} else {
@@ -527,7 +532,7 @@
 				loginModal.hide();
 				document.querySelector('.container-fluid').style.display = 'block';
 				// Start status polling after successful login
-				statusPollInterval = setInterval(pollFileStatus, 60000); // Poll every 2 seconds
+				statusPollInterval = setInterval(pollFileStatus, 2000); // Poll every 2 seconds
 			} else {
 				document.getElementById('loginError').style.display = 'block';
 			}
@@ -772,7 +777,7 @@
 							<td>
 								${dbFileInfo && dbFileInfo.stop_monitor_date && new Date(dbFileInfo.stop_monitor_date) < new Date().setHours(0,0,0,0)
 									? '<span class="badge bg-danger">Expired</span>'
-									: `<span class="badge ${currentStatus === 'In Progress' ? 'bg-primary' : 'bg-secondary'} status-badge" data-filename="${file}">${currentStatus}</span>`}
+									: `<span class="badge ${(currentStatus === 'In Progress' || currentStatus === 'Checking Status') ? 'bg-primary' : 'bg-secondary'} status-badge" data-filename="${file}">${currentStatus}</span>`}
 							</td>
 							<td>
 								<button class="btn btn-danger btn-sm delete-btn" data-filename="${file}">Delete</button>
@@ -974,9 +979,18 @@
 				const result = await response.json();
 
 				if (response.ok) {
-					showNotification('Status check completed successfully');
+					let message = result.message || 'Status check completed successfully';
+					if (result.files_skipped && result.files_skipped.length > 0) {
+						message += `\nSkipped files already being checked: ${result.files_skipped.join(', ')}`;
+					}
+					showNotification(message);
 				} else {
-					showNotification(result.error, 'danger');
+					// Handle specific error for files already being checked
+					if (result.files_already_checking && result.files_already_checking.length > 0) {
+						showNotification(result.message, 'warning');
+					} else {
+						showNotification(result.error || result.message, 'danger');
+					}
 				}
 			} catch (error) {
 				showNotification('Error checking status', 'danger');
