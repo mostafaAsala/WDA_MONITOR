@@ -1780,6 +1780,196 @@ def download_wda_reg_filtered():
         log_user_activity(username, 'WDA_REG_DOWNLOAD_ERROR', f'Error downloading WDA_Reg data: {str(e)}')
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/download-wda-reg-raw-data', methods=['POST'])
+@login_required
+@permission_required('view')
+def download_wda_reg_raw_data():
+    """API endpoint to download raw WDA_Reg data directly from database with filters"""
+    username = session['username']
+    try:
+        app.logger.info(f'User {username} downloading raw WDA_Reg data from database')
+        log_user_activity(username, 'WDA_REG_RAW_DOWNLOAD', 'Downloaded raw WDA_Reg data from database')
+
+        # Get filters from request
+        filters = request.json or {}
+
+        # Query database directly for raw data with filters
+        df = query_wda_reg_raw_data_with_filters(filters)
+
+        # Create temporary file for download
+        system_monitor_dir = os.path.join(os.getcwd(), "system_Monitor")
+        os.makedirs(system_monitor_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        temp_filename = f'wda_reg_raw_data_{timestamp}.csv'
+        temp_filepath = os.path.join(system_monitor_dir, temp_filename)
+
+        # Save raw data
+        df.to_csv(temp_filepath, index=False)
+
+        app.logger.info(f'Successfully created raw WDA_Reg download file: {temp_filepath} with {len(df)} records')
+
+        return send_file(temp_filepath, as_attachment=True, download_name=temp_filename)
+
+    except Exception as e:
+        app.logger.error(f'Error downloading raw WDA_Reg data: {str(e)}')
+        log_user_activity(username, 'WDA_REG_RAW_DOWNLOAD_ERROR', f'Error downloading raw data: {str(e)}')
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+def query_wda_reg_raw_data_with_filters(filters):
+    """Query database directly for raw WDA_Reg data with filters applied"""
+    from check_status import create_db_engine
+
+    engine = create_db_engine()
+
+    try:
+        # Build the base query with filters applied in SQL
+        base_query = """
+            with main_data as(
+            SELECT
+                man_id,
+                mod_id,
+                Prty,
+                cs,
+                LRD2,
+                v_notfound_dat2,
+                CASE
+                    WHEN v_notfound_dat2 > LRD2 THEN 'not found'
+                    WHEN LRD2 > v_notfound_dat2 THEN 'found'
+                    WHEN LRD2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY')
+                         AND v_notfound_dat2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') THEN 'not run'
+                END AS status,
+
+              CASE
+                  WHEN v_notfound_dat2 > LRD2 THEN v_notfound_dat2
+                  when LRD2 > v_notfound_dat2 then LRD2
+                  ELSE Null
+              END AS LR_date,
+              count,
+              pn
+
+            FROM (
+                SELECT
+                    man_id,
+                    mod_id,
+                    Prty,
+                    cs,
+                    pn,
+                    NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS v_notfound_dat2,
+                    NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS LRD2,
+                    COUNT(*) AS count
+                FROM updatesys.TBL_Prty_pns_@NEW3_N
+                GROUP BY man_id, mod_id, Prty, cs, pn,
+                         NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')),
+                         NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
+            ))
+            select
+                z.man_name,
+                y.module_name,
+                y.wda_flag,
+                x.Prty,
+                x.cs,
+                x.LRD2,
+                x.v_notfound_dat2,
+                x.status,
+                x.LR_date,
+                x.count,
+                x.pn as part_number
+            from main_data x
+            join updatesys.tbl_man_modules@new3_n y on x.man_id = y.man_id and x.mod_id = y.module_id
+            join cm.xlp_se_manufacturer@new3_n z on y.man_id = z.man_id
+        """
+
+        # Build WHERE clause based on filters
+        where_conditions = []
+        query_params = {}
+
+        if filters.get('man_names') and len(filters['man_names']) > 0:
+            placeholders = ','.join([f':man_name_{i}' for i in range(len(filters['man_names']))])
+            where_conditions.append(f"z.man_name IN ({placeholders})")
+            for i, man_name in enumerate(filters['man_names']):
+                query_params[f'man_name_{i}'] = man_name
+
+        if filters.get('module_names') and len(filters['module_names']) > 0:
+            placeholders = ','.join([f':module_name_{i}' for i in range(len(filters['module_names']))])
+            where_conditions.append(f"y.module_name IN ({placeholders})")
+            for i, module_name in enumerate(filters['module_names']):
+                query_params[f'module_name_{i}'] = module_name
+
+        if filters.get('priorities') and len(filters['priorities']) > 0:
+            placeholders = ','.join([f':priority_{i}' for i in range(len(filters['priorities']))])
+            where_conditions.append(f"x.Prty IN ({placeholders})")
+            for i, priority in enumerate(filters['priorities']):
+                query_params[f'priority_{i}'] = priority
+
+        if filters.get('statuses') and len(filters['statuses']) > 0:
+            placeholders = ','.join([f':status_{i}' for i in range(len(filters['statuses']))])
+            where_conditions.append(f"x.status IN ({placeholders})")
+            for i, status in enumerate(filters['statuses']):
+                query_params[f'status_{i}'] = status
+
+        if filters.get('wda_flags') and len(filters['wda_flags']) > 0:
+            placeholders = ','.join([f':wda_flag_{i}' for i in range(len(filters['wda_flags']))])
+            where_conditions.append(f"y.wda_flag IN ({placeholders})")
+            for i, wda_flag in enumerate(filters['wda_flags']):
+                query_params[f'wda_flag_{i}'] = wda_flag
+
+        # Add date filters if provided
+        if filters.get('date_start'):
+            where_conditions.append("x.LR_date >= TO_DATE(:date_start, 'YYYY-MM-DD')")
+            query_params['date_start'] = filters['date_start']
+
+        if filters.get('date_end'):
+            where_conditions.append("x.LR_date <= TO_DATE(:date_end, 'YYYY-MM-DD')")
+            query_params['date_end'] = filters['date_end']
+
+        # Add CS labels filter if provided
+        if filters.get('cs_labels') and len(filters['cs_labels']) > 0:
+            cs_conditions = []
+            for i, cs_label in enumerate(filters['cs_labels']):
+                cs_conditions.append(f"x.cs LIKE :cs_label_{i}")
+                query_params[f'cs_label_{i}'] = f'%{cs_label}%'
+            where_conditions.append(f"({' OR '.join(cs_conditions)})")
+
+        # Combine base query with WHERE clause
+        if where_conditions:
+            final_query = base_query + " WHERE " + " AND ".join(where_conditions)
+        else:
+            final_query = base_query
+
+        # Add ORDER BY for consistent results
+        final_query += " ORDER BY z.man_name, y.module_name, x.Prty, x.status"
+
+        app.logger.info(f'Executing raw data query with {len(query_params)} filter parameters')
+
+        with engine.connect() as connection:
+            result = connection.execute(text(final_query), query_params)
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+        print(df.columns)
+        df.columns = [c.upper() for c in df.columns]
+        # Process dates and add additional computed columns
+        df['LRD2'] = pd.to_datetime(df['LRD2'], errors='coerce')
+        df['V_NOTFOUND_DAT2'] = pd.to_datetime(df['V_NOTFOUND_DAT2'], errors='coerce')
+        df['LR_DATE'] = pd.to_datetime(df['LR_DATE'], errors='coerce')
+
+        # Add is_expired flag based on LR_DATE
+        df['is_expired'] = (df['LR_DATE'].isna()) | (df['LR_DATE'] < datetime.now() - timedelta(days=Config.Date_to_expire))
+
+        # Apply expired filter if provided
+        if filters.get('expired_filter') and len(filters['expired_filter']) > 0:
+            expired_values = [val.lower() == 'true' for val in filters['expired_filter']]
+            df = df[df['is_expired'].isin(expired_values)]
+
+        app.logger.info(f'Raw data query completed, returning {len(df)} records')
+        return df
+
+    except Exception as e:
+        app.logger.error(f'Error in query_wda_reg_raw_data_with_filters: {str(e)}')
+        app.logger.error(traceback.format_exc())
+        raise
+    finally:
+        engine.dispose()
+
 def apply_wda_reg_filters(df, filters):
     """Apply filters to WDA_Reg data"""
     filtered_df = df.copy()

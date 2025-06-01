@@ -422,6 +422,9 @@
                 <button id="downloadData" class="btn btn-outline-success w-100 mb-3">
                     <i class="fas fa-download"></i> Download Data
                 </button>
+                <button id="downloadRawData" class="btn btn-outline-info w-100 mb-3">
+                    <i class="fas fa-database"></i> Download Raw Data
+                </button>
 
                 <!-- Data Info Section -->
                 <div class="card mt-3">
@@ -1735,6 +1738,7 @@
             $('#forceRefreshData').on('click', forceRefreshData);
             $('#clearFilters').on('click', clearAllFilters);
             $('#downloadData').on('click', downloadTableData);
+            $('#downloadRawData').on('click', downloadRawData);
             $('#applyTimelineFilter').on('click', applyTimelineFilter);
             $('#resetTimelineFilter').on('click', resetTimelineFilter);
         }
@@ -1818,6 +1822,55 @@
             } catch (error) {
                 console.error('Error downloading data:', error);
                 showNotification('Error downloading data: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Download raw data directly from database with filters
+        async function downloadRawData() {
+            try {
+                showLoading(true);
+
+                // Get current filter values
+                const filters = {
+                    man_names: $('#manNameFilter').val() || [],
+                    module_names: $('#moduleNameFilter').val() || [],
+                    priorities: $('#priorityFilter').val() || [],
+                    statuses: $('#statusFilter').val() || [],
+                    wda_flags: $('#wdaFlagFilter').val() || [],
+                    expired_filter: $('#expiredFilter').val() || [],
+                    cs_labels: $('#csFilter').val() || [],
+                    ...(currentFilters.date_start && { date_start: currentFilters.date_start }),
+                    ...(currentFilters.date_end && { date_end: currentFilters.date_end })
+                };
+
+                const response = await fetch('/api/download-wda-reg-raw-data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(filters)
+                });
+                console.log("checking response: ",response)
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `wda_reg_raw_data_${new Date().toISOString().split('T')[0]}.csv`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(url);
+
+                    showNotification('Raw data downloaded successfully', 'success');
+                } else {
+                    throw new Error('Failed to download raw data');
+                }
+            } catch (error) {
+                console.error('Error downloading raw data:', error);
+                showNotification('Error downloading raw data: ' + error.message, 'error');
             } finally {
                 showLoading(false);
             }
