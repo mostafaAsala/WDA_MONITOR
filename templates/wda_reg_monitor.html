@@ -1198,30 +1198,8 @@
                               '<extra></extra>'
             });
 
-            // Status-specific lines
-            Object.keys(statusColors).forEach(status => {
-                const statusData = sortedDates.map(date =>
-                    statusTimeline[date] && statusTimeline[date][status] ? statusTimeline[date][status] : 0
-                );
-
-                if (statusData.some(val => val > 0)) {
-                    traces.push({
-                        x: sortedDates,
-                        y: statusData,
-                        type: 'scatter',
-                        mode: 'lines',
-                        name: status.charAt(0).toUpperCase() + status.slice(1),
-                        line: {
-                            color: statusColors[status],
-                            width: 2,
-                            dash: 'dot'
-                        },
-                        hovertemplate: '<b>%{x}</b><br>' +
-                                      status.charAt(0).toUpperCase() + status.slice(1) + ': %{y:,}<br>' +
-                                      '<extra></extra>'
-                    });
-                }
-            });
+            // Note: Status-specific timeline data is not available in current data structure
+            // Only showing total count timeline for now
 
             const layout = {
                 height: 350,

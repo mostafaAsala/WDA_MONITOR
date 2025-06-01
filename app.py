@@ -1429,7 +1429,7 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
         not_found_parts = int(df[df['STATUS'] == 'not found']['COUNT'].sum())
         not_run_parts = int(df[df['STATUS'] == 'not run']['COUNT'].sum())
         expired_parts = int(df[df['is_expired'] == True]['COUNT'].sum())
-        expired_parts = int(df['PRTY'].str.startswith('P').sum())
+        expired_parts = int(df[df['PRTY'].str.startswith('P')]['COUNT'].sum())
         unique_modules = int(df['MODULE_NAME'].nunique())
         unique_manufacturers = int(df['MAN_NAME'].nunique())
 
