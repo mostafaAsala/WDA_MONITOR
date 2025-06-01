@@ -526,6 +526,27 @@
                     </div>
                 </div>
 
+                <!-- Third Row Charts -->
+                <div class="row mt-4">
+                    <!-- CS Distribution Chart -->
+                    <div class="col-md-12 chart-container">
+                        <div class="chart-header">
+                            <h4>CS Labels Distribution (Top 15)</h4>
+                            <button class="download-btn" onclick="downloadChart('csChart')">
+                                <i class="fas fa-download"></i>
+                            </button>
+                        </div>
+                        <div class="position-relative h-100">
+                            <div id="csChart"></div>
+                            <div class="chart-loading">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Timeline Chart -->
                 <div class="row mt-4">
                     <div class="col-12 chart-container">
@@ -565,6 +586,7 @@
                                             <th>Priority</th>
                                             <th>Status</th>
                                             <th>WDA Flag</th>
+                                            <th>CS Labels</th>
                                             <th>LR Date</th>
                                             <th>Count</th>
                                             <th>Expired</th>
@@ -664,6 +686,7 @@
             const priorities = filterOptions.priorities || [];
             const statuses = filterOptions.statuses || [];
             const wdaFlags = filterOptions.wda_flags || [];
+            const csLabels = filterOptions.cs_labels || [];
 
             // Create filter HTML with Select All buttons
             const filtersHTML = `
@@ -734,6 +757,17 @@
                         <option value="false">Not Expired</option>
                     </select>
                 </div>
+                <div class="filter-wrapper">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0">CS Labels</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary select-all-btn" data-target="csFilter">
+                            Select All
+                        </button>
+                    </div>
+                    <select class="form-select select2" id="csFilter" multiple>
+                        ${csLabels.map(label => `<option value="${label}">${label}</option>`).join('')}
+                    </select>
+                </div>
             `;
 
             filterContainer.html(filtersHTML);
@@ -794,6 +828,7 @@
             const statusFilter = $('#statusFilter').val();
             const wdaFlagFilter = $('#wdaFlagFilter').val();
             const expiredFilter = $('#expiredFilter').val();
+            const csFilter = $('#csFilter').val();
 
             // Update current filters
             currentFilters = {
@@ -802,7 +837,8 @@
                 priorities: priorityFilter || [],
                 statuses: statusFilter || [],
                 wda_flags: wdaFlagFilter || [],
-                expired_filter: expiredFilter || []
+                expired_filter: expiredFilter || [],
+                cs_labels: csFilter || []
             };
 
             // Check if any filters are applied
@@ -989,6 +1025,7 @@
             updatePriorityChart();
             updateManufacturerChart();
             updateWdaFlagChart();
+            updateCsChart();
             updateTimelineChart();
         }
 
@@ -1380,6 +1417,78 @@
             Plotly.newPlot('wdaFlagChart', data, layout, config);
         }
 
+        // Update CS distribution chart
+        function updateCsChart() {
+            if (!currentAggregations.charts || !currentAggregations.charts.cs) {
+                console.warn('No CS chart data available');
+                return;
+            }
+
+            const csData = currentAggregations.charts.cs;
+            const labels = csData.labels;
+            const values = csData.values;
+
+            // Create gradient colors for CS labels
+            const colors = labels.map((_, index) => {
+                const intensity = (labels.length - index) / labels.length;
+                return `rgba(52, 152, 219, ${0.4 + intensity * 0.6})`;
+            });
+
+            const data = [{
+                x: labels,
+                y: values,
+                type: 'bar',
+                text: values.map(v => v.toLocaleString()),
+                textposition: 'auto',
+                hovertemplate: '<b>CS Label: %{x}</b><br>' +
+                              'Count: %{y:,}<br>' +
+                              '<extra></extra>',
+                marker: {
+                    color: colors,
+                    line: {
+                        color: '#2980b9',
+                        width: 1
+                    }
+                }
+            }];
+
+            const layout = {
+                height: 350,
+                margin: { t: 30, b: 120, l: 60, r: 30 },
+                xaxis: {
+                    title: {
+                        text: 'CS Labels',
+                        font: { size: 14, color: '#2c3e50' }
+                    },
+                    tickangle: -45,
+                    tickfont: { size: 10 }
+                },
+                yaxis: {
+                    title: {
+                        text: 'Count',
+                        font: { size: 14, color: '#2c3e50' }
+                    },
+                    tickformat: ',',
+                    tickfont: { size: 12 }
+                },
+                font: {
+                    family: 'Arial, sans-serif'
+                },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                bargap: 0.3
+            };
+
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d', 'autoScale2d'],
+                displaylogo: false
+            };
+
+            Plotly.newPlot('csChart', data, layout, config);
+        }
+
         // Update expired vs active chart
         function updateExpiredChart() {
             if (!currentAggregations.charts || !currentAggregations.charts.expired) {
@@ -1448,7 +1557,7 @@
             tableBody.empty();
 
             if (!currentAggregations.table_data || currentAggregations.table_data.length === 0) {
-                tableBody.append('<tr><td colspan="8" class="text-center">No data available</td></tr>');
+                tableBody.append('<tr><td colspan="9" class="text-center">No data available</td></tr>');
                 return;
             }
 
@@ -1468,6 +1577,14 @@
                     '<span class="badge bg-success">Yes</span>' :
                     '<span class="badge bg-danger">No</span>';
 
+                // Format CS labels for display
+                const csLabels = item.CS || '';
+                const csDisplay = csLabels ?
+                    csLabels.split('|').map(label =>
+                        `<span class="badge bg-secondary me-1">${label.trim()}</span>`
+                    ).join('') :
+                    '<span class="text-muted">N/A</span>';
+
                 const row = `
                     <tr>
                         <td>${item.MAN_NAME}</td>
@@ -1475,6 +1592,7 @@
                         <td><span class="badge bg-info">${item.PRTY}</span></td>
                         <td>${statusBadge}</td>
                         <td>${wdaFlagBadge}</td>
+                        <td>${csDisplay}</td>
                         <td>${item.LR_DATE || 'N/A'}</td>
                         <td><strong>${item.COUNT.toLocaleString()}</strong></td>
                         <td>${expiredBadge}</td>
@@ -1563,7 +1681,8 @@
                     priorities: $('#priorityFilter').val() || [],
                     statuses: $('#statusFilter').val() || [],
                     wda_flags: $('#wdaFlagFilter').val() || [],
-                    expired_filter: $('#expiredFilter').val() || []
+                    expired_filter: $('#expiredFilter').val() || [],
+                    cs_labels: $('#csFilter').val() || []
                 };
 
                 const response = await fetch('/api/download-wda-reg-filtered', {

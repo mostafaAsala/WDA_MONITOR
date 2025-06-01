@@ -1476,6 +1476,31 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
             }
         }
 
+        # CS distribution (optimized multi-label processing)
+        # First, get all unique CS labels from the dataset
+        all_cs_labels = set()
+        df['CS_clean'] = df['CS'].fillna('').astype(str)
+        df['CS_clean'] = df['CS_clean'].replace('nan', '')
+
+        # Extract all unique labels efficiently
+        for cs_value in df['CS_clean'].unique():
+            if cs_value:
+                all_cs_labels.update([label.strip() for label in cs_value.split('|') if label.strip()])
+
+        # Calculate counts for each label using vectorized operations
+        cs_counts = {}
+        for label in all_cs_labels:
+            # Use vectorized string contains operation
+            mask = df['CS_clean'].str.contains(f'\\b{re.escape(label)}\\b', regex=True, na=False)
+            cs_counts[label] = df[mask]['COUNT'].sum()
+
+        # Sort CS labels by count (descending) and take top 15
+        sorted_cs = sorted(cs_counts.items(), key=lambda x: x[1], reverse=True)[:15]
+        cs_chart_data = {
+            'labels': [item[0] for item in sorted_cs],
+            'values': [int(item[1]) for item in sorted_cs]
+        }
+
         # Expired vs Active
         expired_chart_data = {
             'labels': ['Active', 'Expired'],
@@ -1498,6 +1523,9 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
                     'counts': [int(v) for v in timeline_counts.values]
                 }
 
+        # Use the already extracted CS labels for filter options (reuse from chart calculation)
+        cs_labels = all_cs_labels
+
         # Filter options for client-side filtering
         filter_options = {
             'man_names': sorted(df['MAN_NAME'].unique().tolist()),
@@ -1505,12 +1533,13 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
             'priorities': sorted(df['PRTY'].unique().tolist()),
             'statuses': sorted(df['STATUS'].unique().tolist()),
             'wda_flags': sorted(df['WDA_FLAG'].unique().tolist()),
+            'cs_labels': sorted(list(cs_labels)),
             'expired_options': ['true', 'false']
         }
 
-        # Prepare aggregated table data (grouped by key dimensions)
+        """# Prepare aggregated table data (grouped by key dimensions)
         table_data = []
-        grouped_df = df.groupby(['MAN_NAME', 'MODULE_NAME', 'PRTY', 'STATUS', 'WDA_FLAG']).agg({
+        grouped_df = df.groupby(['MAN_NAME', 'MODULE_NAME', 'PRTY', 'STATUS', 'WDA_FLAG', 'CS']).agg({
             'COUNT': 'sum',
             'is_expired': 'first',  # Take first value as they should be consistent within group
             'LR_DATE': 'first'
@@ -1523,10 +1552,11 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
                 'PRTY': row['PRTY'],
                 'STATUS': row['STATUS'],
                 'WDA_FLAG': row['WDA_FLAG'],
+                'CS': str(row['CS']) if pd.notna(row['CS']) else '',
                 'COUNT': int(row['COUNT']),
                 'is_expired': bool(row['is_expired']),
                 'LR_DATE': str(row['LR_DATE']) if pd.notna(row['LR_DATE']) else ''
-            })
+            })"""
 
         return {
             'stats': {
@@ -1549,10 +1579,11 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
                 'manufacturer': manufacturer_chart_data,
                 'expired': expired_chart_data,
                 'timeline': timeline_data,
-                'wda_flag': wda_flag_chart_data
+                'wda_flag': wda_flag_chart_data,
+                'cs': cs_chart_data
             },
             'filter_options': filter_options,
-            'table_data': table_data
+            'table_data': []#table_data
         }
 
     except Exception as e:
@@ -1601,7 +1632,7 @@ def get_wda_reg_data():
         })
 
     except Exception as e:
-        app.logger.error(f'Error fetching WDA_Reg data: {str(e)}')
+        app.logger.error(f'Error fetching WDA_Reg data: {traceback.format_exc()}')
         log_user_activity(username, 'WDA_REG_DATA_ERROR', f'Error fetching WDA_Reg data: {str(e)}')
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
@@ -1659,10 +1690,11 @@ def get_wda_reg_filtered_aggregations():
         df['is_expired'] = df['is_expired'].astype(bool)
         df['STATUS'] = df['STATUS'].astype(str)
         df['PRTY'] = df['PRTY'].astype(str)
+        df['CS'] = df['CS'].astype(str)
         df['MODULE_NAME'] = df['MODULE_NAME'].astype(str)
         df['MAN_NAME'] = df['MAN_NAME'].astype(str)
         df['WDA_FLAG'] = df['WDA_FLAG'].astype(int)
-		
+
 
         # Apply filters from request
         filters = request.json or {}
@@ -1754,6 +1786,18 @@ def apply_wda_reg_filters(df, filters):
             filtered_df = filtered_df[filtered_df['is_expired'] == True]
         elif 'false' in filters['expired_filter'] and 'true' not in filters['expired_filter']:
             filtered_df = filtered_df[filtered_df['is_expired'] == False]
+
+    # CS filter (optimized multi-label support)
+    if filters.get('cs_labels'):
+        cs_filter_labels = filters['cs_labels']
+        # Use vectorized string operations for better performance
+        if 'CS_clean' not in filtered_df.columns:
+            filtered_df['CS_clean'] = filtered_df['CS'].fillna('').astype(str).replace('nan', '')
+
+        # Create regex pattern to match any of the selected labels
+        pattern = '|'.join([f'\\b{re.escape(label)}\\b' for label in cs_filter_labels])
+        mask = filtered_df['CS_clean'].str.contains(pattern, regex=True, na=False)
+        filtered_df = filtered_df[mask]
 
     return filtered_df
 
