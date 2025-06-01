@@ -1555,26 +1555,39 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
             'expired_options': ['true', 'false']
         }
 
-        """# Prepare aggregated table data (grouped by key dimensions)
+        # Prepare aggregated table data (grouped by MAN_NAME and MODULE_NAME)
         table_data = []
-        grouped_df = df.groupby(['MAN_NAME', 'MODULE_NAME', 'PRTY', 'STATUS', 'WDA_FLAG', 'CS']).agg({
-            'COUNT': 'sum',
-            'is_expired': 'first',  # Take first value as they should be consistent within group
-            'LR_DATE': 'first'
-        }).reset_index()
+        
+        df['outdated'] = df['PRTY'].str.startswith('P') * df['COUNT']
+        df['expired'] = (df['is_expired'] == True) * df['COUNT']
+        df['found'] = (df['STATUS']=='found') * df['COUNT']  # Ensure STATUS has no NaN values
+        df['notfound'] = (df['STATUS']=='notfound') * df['COUNT']  # Ensure STATUS has no NaN values
 
-        for _, row in grouped_df.iterrows():
+        grouped_df = df.groupby(['MAN_NAME', 'MODULE_NAME']).agg({
+        	'COUNT': 'sum',
+        	'outdated': 'sum',
+        	'expired': 'sum',
+        	'found': 'sum',
+        	'notfound': 'sum'
+        }).reset_index()
+        
+        table_data = grouped_df.to_dict(orient='records')
+        
+        """for (man, module), group in grouped_df:
+        	# Outdated: sum of COUNT where PRTY starts with 'P'
+            outdated_count = group[group['PRTY'].str.startswith('P')]['COUNT'].sum()
+            # Found: sum of COUNT where STATUS == 'found'
+            found_count = group[group['STATUS'] == 'found']['COUNT'].sum()
+            # Error: sum of COUNT where STATUS == 'Error'
+            error_count = group[group['STATUS'] == 'Error']['COUNT'].sum()
+
             table_data.append({
-                'MAN_NAME': row['MAN_NAME'],
-                'MODULE_NAME': row['MODULE_NAME'],
-                'PRTY': row['PRTY'],
-                'STATUS': row['STATUS'],
-                'WDA_FLAG': row['WDA_FLAG'],
-                'CS': str(row['CS']) if pd.notna(row['CS']) else '',
-                'COUNT': int(row['COUNT']),
-                'is_expired': bool(row['is_expired']),
-                'LR_DATE': str(row['LR_DATE']) if pd.notna(row['LR_DATE']) else ''
-            })"""
+        	'MAN_NAME': man,
+        	'MODULE_NAME': module,
+        	'outdated_count': int(outdated_count),
+        	'found_count': int(found_count),
+        	'error_count': int(error_count)
+        	})"""
 
         return {
             'stats': {
@@ -1601,7 +1614,7 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
                 'cs': cs_chart_data
             },
             'filter_options': filter_options,
-            'table_data': []#table_data
+            'table_data': table_data
         }
 
     except Exception as e:
@@ -1779,6 +1792,60 @@ def download_wda_reg_filtered():
         app.logger.error(f'Error downloading filtered WDA_Reg data: {str(e)}')
         log_user_activity(username, 'WDA_REG_DOWNLOAD_ERROR', f'Error downloading WDA_Reg data: {str(e)}')
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/upload-to-monitor', methods=['POST'])
+@login_required
+@permission_required('view')
+def upload_to_monitor():
+    """API endpoint to upload files to the monitor"""
+    username = session['username']
+    try:
+        app.logger.info(f'User {username} uploading file to monitor')
+        log_user_activity(username, 'WDA_REG_UPLOAD', 'Uploaded file to monitor')
+
+        # Get file details from request
+        data = request.json
+        file_name = data.get('fileName')
+        filters = data.get('filters', {})
+
+
+        if not file_name:
+            return jsonify({'status': 'error', 'message': 'File name is required'}), 400
+        if not filters:
+            filters = {}
+            
+        app.logger.info(f'File name: {file_name}, Filters: {filters}')
+        
+        # Query database directly for raw data with filters
+        df = query_wda_reg_raw_data_with_filters(filters)
+        if df.empty:
+            return jsonify({'status': 'error', 'message': 'No data found for the given filters'}), 404
+		
+        date_str = datetime.now().date()
+        new_filename = f"{file_name}@{date_str}.txt"
+        file_path = os.path.join(Config.WORK_FOLDER, new_filename)
+        file = df[['PART_NUMBER','MAN_NAME','MODULE_NAME']].copy()
+        try:
+            file.to_csv(file_path, index=False, sep='\t')
+            app.logger.info(f'User {username} uploaded file: {new_filename}')
+            log_user_activity(username, 'FILE_UPLOAD', f'Uploaded: {new_filename}')
+            main_upload_parts(Config.WORK_FOLDER)
+            app.logger.info('File processed successfully')
+            return jsonify({'message': 'File uploaded and processed successfully'})
+        except Exception as e:
+            app.logger.error(f'Error processing file: {str(e)}')
+            log_user_activity(username, 'FILE_UPLOAD_ERROR', f'Failed to upload: {file_name} - {str(e)}')
+            return jsonify({'error': str(e)}), 500
+
+        
+
+    except Exception as e:
+        app.logger.error(f'Error uploading file to monitor: {str(e)}')
+        log_user_activity(username, 'WDA_REG_UPLOAD_ERROR', f'Error uploading file: {str(e)}')
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 
 @app.route('/api/download-wda-reg-raw-data', methods=['POST'])
 @login_required
