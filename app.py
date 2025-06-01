@@ -2397,6 +2397,12 @@ def weekly_scheduled_upload_task():
 	finally:
 		amazon_upload_in_progress = False
 
+
+
+
+
+
+
 def wda_reg_system_download_task():
 	"""
 	Daily task to download WDA_Reg system aggregated data and reload into memory
@@ -2412,6 +2418,54 @@ def wda_reg_system_download_task():
 	except Exception as e:
 		app.logger.error(f'Error in WDA_Reg system data download task: {str(e)}')
 # 🔹 Define TaskConfig
+
+
+
+
+def run_daily_summary():
+    query = '''
+    INSERT INTO summary_table (
+        summary_date,
+        "NDF<14", "NotF<90", "P6", "P8", "NDF<7", "P5", "P2", 
+        "NDF<60", "NotF<60", "P1", "P3", "NotF<7", "P10", 
+        "NDF<30", "updated", "P7", "NotF<30", "NDF<90", "NotF<14"
+    )
+    SELECT
+        SYSDATE AS summary_date,
+        MAX(CASE WHEN prty = 'NDF<14'  THEN cnt ELSE 0 END) AS "NDF<14",
+        MAX(CASE WHEN prty = 'NotF<90' THEN cnt ELSE 0 END) AS "NotF<90",
+        MAX(CASE WHEN prty = 'P6'      THEN cnt ELSE 0 END) AS "P6",
+        MAX(CASE WHEN prty = 'P8'      THEN cnt ELSE 0 END) AS "P8",
+        MAX(CASE WHEN prty = 'NDF<7'   THEN cnt ELSE 0 END) AS "NDF<7",
+        MAX(CASE WHEN prty = 'P5'      THEN cnt ELSE 0 END) AS "P5",
+        MAX(CASE WHEN prty = 'P2'      THEN cnt ELSE 0 END) AS "P2",
+        MAX(CASE WHEN prty = 'NDF<60'  THEN cnt ELSE 0 END) AS "NDF<60",
+        MAX(CASE WHEN prty = 'NotF<60' THEN cnt ELSE 0 END) AS "NotF<60",
+        MAX(CASE WHEN prty = 'P1'      THEN cnt ELSE 0 END) AS "P1",
+        MAX(CASE WHEN prty = 'P3'      THEN cnt ELSE 0 END) AS "P3",
+        MAX(CASE WHEN prty = 'NotF<7'  THEN cnt ELSE 0 END) AS "NotF<7",
+        MAX(CASE WHEN prty = 'P10'     THEN cnt ELSE 0 END) AS "P10",
+        MAX(CASE WHEN prty = 'NDF<30'  THEN cnt ELSE 0 END) AS "NDF<30",
+        MAX(CASE WHEN prty = 'updated' THEN cnt ELSE 0 END) AS "updated",
+        MAX(CASE WHEN prty = 'P7'      THEN cnt ELSE 0 END) AS "P7",
+        MAX(CASE WHEN prty = 'NotF<30' THEN cnt ELSE 0 END) AS "NotF<30",
+        MAX(CASE WHEN prty = 'NDF<90'  THEN cnt ELSE 0 END) AS "NDF<90",
+        MAX(CASE WHEN prty = 'NotF<14' THEN cnt ELSE 0 END) AS "NotF<14"
+    FROM (
+        SELECT prty, COUNT(*) AS cnt
+        FROM updatesys.TBL_Prty_pns_@NEW3_N
+        GROUP BY prty
+    );
+    '''
+    from check_status import create_db_engine
+    # Replace with your DB connection setup
+    engine = create_db_engine()
+    with engine.connect() as conn:
+        conn.execute(text(query))
+        conn.commit()
+    engine.dispose()
+
+
 class TaskConfig:
     SCHEDULER_API_ENABLED = True
 
@@ -2452,8 +2506,18 @@ class TaskConfig:
             'day_of_week': 'fri',  # Run every Monday
             'hour': 3,  # At 3 AM
             'minute': 0
+        },
+        {
+            'id': 'daily_summary',  # Unique Job ID
+            'func': 'app:run_daily_summary',  # Function to run
+            'trigger': 'cron',
+            'hour': 5,  # At 2 AM daily
+            'minute': 0
         }
     ]
+
+
+
 
 
 @app.route('/get-available-dates')
