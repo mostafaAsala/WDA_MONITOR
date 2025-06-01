@@ -1561,7 +1561,7 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
         df['outdated'] = df['PRTY'].str.startswith('P') * df['COUNT']
         df['expired'] = (df['is_expired'] == True) * df['COUNT']
         df['found'] = (df['STATUS']=='found') * df['COUNT']  # Ensure STATUS has no NaN values
-        df['notfound'] = (df['STATUS']=='notfound') * df['COUNT']  # Ensure STATUS has no NaN values
+        df['notfound'] = (df['STATUS']=='not found') * df['COUNT']  # Ensure STATUS has no NaN values
 
         grouped_df = df.groupby(['MAN_NAME', 'MODULE_NAME']).agg({
         	'COUNT': 'sum',

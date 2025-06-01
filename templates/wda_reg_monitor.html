@@ -16,6 +16,49 @@
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
     <style>
+        /* Table Styles */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .data-table th,
+        .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .data-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .data-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .percentage-cell {
+            position: relative;
+            padding-right: 25px !important;
+        }
+        
+        .percentage-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-left: 8px;
+        }
+        
+        .percentage-high { background-color: #28a745; }
+        .percentage-medium { background-color: #ffc107; }
+        .percentage-low { background-color: #dc3545; }
+
         .alert {
             position: fixed;
             top: 20px;
@@ -605,13 +648,15 @@
                                         <tr>
                                             <th>Manufacturer</th>
                                             <th>Module</th>
-                                            <th>Priority</th>
-                                            <th>Status</th>
-                                            <th>WDA Flag</th>
-                                            <th>CS Labels</th>
-                                            <th>LR Date</th>
-                                            <th>Count</th>
+                                            <th>Total Count</th>
+                                            <th>Outdated</th>
+                                            <th>Outdated %</th>
                                             <th>Expired</th>
+                                            <th>Expired %</th>
+                                            <th>Found</th>
+                                            <th>Found %</th>
+                                            <th>Not Found</th>
+                                            <th>Not Found %</th>
                                         </tr>
                                     </thead>
                                     <tbody id="dataTableBody">
@@ -2023,6 +2068,70 @@
                 $('#loading').show();
             } else {
                 $('#loading').hide();
+            }
+        }
+
+        // Function to get percentage color class
+        function getPercentageColorClass(percentage) {
+            if (percentage >= 80) return 'percentage-high';
+            if (percentage >= 40) return 'percentage-medium';
+            return 'percentage-low';
+        }
+
+        // Function to update table data
+        function updateDataTable() {
+            
+            console.log("currentAggregations.data_table",currentAggregations)
+            if (currentAggregations.table_data
+            ) {
+                const tableBody = document.getElementById('dataTableBody');
+                tableBody.innerHTML = '';
+                console.log("currentAggregations.data_table",currentAggregations.table_data
+                )
+                currentAggregations.table_data
+                .forEach(row => {
+                    const totalCount = row.COUNT || 0;
+                    const outdatedPerc = totalCount > 0 ? ((row.outdated || 0) / totalCount * 100).toFixed(1) : '0.0';
+                    const expiredPerc = totalCount > 0 ? ((row.expired || 0) / totalCount * 100).toFixed(1) : '0.0';
+                    const foundPerc = totalCount > 0 ? ((row.found || 0) / totalCount * 100).toFixed(1) : '0.0';
+                    const notfoundPerc = totalCount > 0 ? ((row.notfound || 0) / totalCount * 100).toFixed(1) : '0.0';
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${row.MAN_NAME || ''}</td>
+                        <td>${row.MODULE_NAME || ''}</td>
+                        <td>${totalCount}</td>
+                        <td>${row.outdated || 0}</td>
+                        <td class="percentage-cell">
+                            ${outdatedPerc}%
+                            <span class="percentage-indicator ${getPercentageColorClass(100 - parseFloat(outdatedPerc))}"></span>
+                        </td>
+                        <td>${row.expired || 0}</td>
+                        <td class="percentage-cell">
+                            ${expiredPerc}%
+                            <span class="percentage-indicator ${getPercentageColorClass(100 - parseFloat(expiredPerc))}"></span>
+                        </td>
+                        <td>${row.found || 0}</td>
+                        <td class="percentage-cell">
+                            ${foundPerc}%
+                            <span class="percentage-indicator ${getPercentageColorClass(parseFloat(foundPerc))}"></span>
+                        </td>
+                        <td>${row.notfound || 0}</td>
+                        <td class="percentage-cell">
+                            ${notfoundPerc}%
+                            <span class="percentage-indicator ${getPercentageColorClass(100 - parseFloat(notfoundPerc))}"></span>
+                        </td>
+                    `;
+                    tableBody.appendChild(tr);
+                });
+            }else{
+                const tableBody = document.getElementById('dataTableBody');
+                tableBody.innerHTML = '';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td colspan="11" class="text-center">No data available</td>
+                `;
+                tableBody.appendChild(tr);
             }
         }
 
