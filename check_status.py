@@ -893,7 +893,8 @@ select
     x.LRD2,
     x.v_notfound_dat2, 
     x.status,
-    x.LR_date
+    x.LR_date,
+    x.count
 from main_data x join updatesys.tbl_man_modules@new3_n y on x.man_id = y.man_id and x.mod_id = y.module_id
 join cm.xlp_se_manufacturer@new3_n z on y.man_id = z.man_id 
         """)

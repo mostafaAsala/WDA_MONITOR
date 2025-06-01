@@ -150,8 +150,8 @@ def load_wda_reg_system_data():
 					if col in wda_reg_system_data.columns:
 						wda_reg_system_data[col] = pd.to_datetime(wda_reg_system_data[col], errors='coerce')
 				print(wda_reg_system_data.columns)
-				wda_reg_system_data['MAN_ID'] = wda_reg_system_data['MAN_ID'].astype(str)
-				wda_reg_system_data['MOD_ID'] = wda_reg_system_data['MOD_ID'].astype(str)
+				wda_reg_system_data['MAN_NAME'] = wda_reg_system_data['MAN_NAME'].astype(str)
+				wda_reg_system_data['MODULE_NAME'] = wda_reg_system_data['MODULE_NAME'].astype(str)
 				wda_reg_system_data['PRTY'] = wda_reg_system_data['PRTY'].astype(str)
 				wda_reg_system_data['STATUS'] = wda_reg_system_data['STATUS'].astype(str)
 				wda_reg_system_data['COUNT'] = wda_reg_system_data['COUNT'].astype(int)
@@ -1429,6 +1429,9 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
         not_found_parts = int(df[df['STATUS'] == 'not found']['COUNT'].sum())
         not_run_parts = int(df[df['STATUS'] == 'not run']['COUNT'].sum())
         expired_parts = int(df[df['is_expired'] == True]['COUNT'].sum())
+        expired_parts = int(df['PRTY'].str.startswith('P').sum())
+        unique_modules = int(df['MODULE_NAME'].nunique())
+        unique_manufacturers = int(df['MAN_NAME'].nunique())
 
         # Calculate percentages
         found_percentage = round((found_parts / total_parts) * 100, 1) if total_parts > 0 else 0
@@ -1455,11 +1458,22 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
             'values': [int(priority_counts[k]) for k in sorted(priority_counts.keys())]
         }
 
-        # Top manufacturers (top 10)
-        manufacturer_counts = df.groupby('MAN_ID')['COUNT'].sum().sort_values(ascending=False).head(10).to_dict()
+        # Top manufacturers (top 10) - using MAN_NAME instead of MAN_ID
+        manufacturer_counts = df.groupby('MAN_NAME')['COUNT'].sum().sort_values(ascending=False).head(10).to_dict()
         manufacturer_chart_data = {
             'labels': list(manufacturer_counts.keys()),
             'values': [int(v) for v in manufacturer_counts.values()]
+        }
+
+        # WDA Flag distribution
+        wda_flag_counts = df.groupby('WDA_FLAG')['COUNT'].sum().to_dict()
+        wda_flag_chart_data = {
+            'labels': list(wda_flag_counts.keys()),
+            'values': [int(v) for v in wda_flag_counts.values()],
+            'colors': {
+                'Y': '#28a745',  # Green for Yes
+                'N': '#dc3545'   # Red for No
+            }
         }
 
         # Expired vs Active
@@ -1486,16 +1500,17 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
 
         # Filter options for client-side filtering
         filter_options = {
-            'man_ids': sorted(df['MAN_ID'].unique().tolist()),
-            'mod_ids': sorted(df['MOD_ID'].unique().tolist()),
+            'man_names': sorted(df['MAN_NAME'].unique().tolist()),
+            'module_names': sorted(df['MODULE_NAME'].unique().tolist()),
             'priorities': sorted(df['PRTY'].unique().tolist()),
             'statuses': sorted(df['STATUS'].unique().tolist()),
+            'wda_flags': sorted(df['WDA_FLAG'].unique().tolist()),
             'expired_options': ['true', 'false']
         }
 
         # Prepare aggregated table data (grouped by key dimensions)
         table_data = []
-        grouped_df = df.groupby(['MAN_ID', 'MOD_ID', 'PRTY', 'STATUS']).agg({
+        grouped_df = df.groupby(['MAN_NAME', 'MODULE_NAME', 'PRTY', 'STATUS', 'WDA_FLAG']).agg({
             'COUNT': 'sum',
             'is_expired': 'first',  # Take first value as they should be consistent within group
             'LR_DATE': 'first'
@@ -1503,10 +1518,11 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
 
         for _, row in grouped_df.iterrows():
             table_data.append({
-                'MAN_ID': row['MAN_ID'],
-                'MOD_ID': row['MOD_ID'],
+                'MAN_NAME': row['MAN_NAME'],
+                'MODULE_NAME': row['MODULE_NAME'],
                 'PRTY': row['PRTY'],
                 'STATUS': row['STATUS'],
+                'WDA_FLAG': row['WDA_FLAG'],
                 'COUNT': int(row['COUNT']),
                 'is_expired': bool(row['is_expired']),
                 'LR_DATE': str(row['LR_DATE']) if pd.notna(row['LR_DATE']) else ''
@@ -1519,18 +1535,21 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
                 'not_found_parts': not_found_parts,
                 'not_run_parts': not_run_parts,
                 'expired_parts': expired_parts,
+				'unique_modules': unique_modules,
+				'unique_manufacturers': unique_manufacturers,
                 'found_percentage': found_percentage,
                 'not_found_percentage': not_found_percentage,
                 'not_run_percentage': not_run_percentage,
                 'expired_percentage': expired_percentage,
-                'unique_manufacturers': len(df['MAN_ID'].unique())
+                'unique_manufacturers': len(df['MAN_NAME'].unique())
             },
             'charts': {
                 'status': status_chart_data,
                 'priority': priority_chart_data,
                 'manufacturer': manufacturer_chart_data,
                 'expired': expired_chart_data,
-                'timeline': timeline_data
+                'timeline': timeline_data,
+                'wda_flag': wda_flag_chart_data
             },
             'filter_options': filter_options,
             'table_data': table_data
@@ -1636,6 +1655,15 @@ def get_wda_reg_filtered_aggregations():
         else:
             df = wda_reg_system_data.copy()
 
+        df['COUNT'] = df['COUNT'].astype(int)
+        df['is_expired'] = df['is_expired'].astype(bool)
+        df['STATUS'] = df['STATUS'].astype(str)
+        df['PRTY'] = df['PRTY'].astype(str)
+        df['MODULE_NAME'] = df['MODULE_NAME'].astype(str)
+        df['MAN_NAME'] = df['MAN_NAME'].astype(str)
+        df['WDA_FLAG'] = df['WDA_FLAG'].astype(int)
+		
+
         # Apply filters from request
         filters = request.json or {}
         filtered_df = apply_wda_reg_filters(df, filters)
@@ -1706,17 +1734,20 @@ def apply_wda_reg_filters(df, filters):
     """Apply filters to WDA_Reg data"""
     filtered_df = df.copy()
 
-    if filters.get('man_ids'):
-        filtered_df = filtered_df[filtered_df['MAN_ID'].isin(filters['man_ids'])]
+    if filters.get('man_names'):
+        filtered_df = filtered_df[filtered_df['MAN_NAME'].isin(filters['man_names'])]
 
-    if filters.get('mod_ids'):
-        filtered_df = filtered_df[filtered_df['MOD_ID'].isin(filters['mod_ids'])]
+    if filters.get('module_names'):
+        filtered_df = filtered_df[filtered_df['MODULE_NAME'].isin(filters['module_names'])]
 
     if filters.get('priorities'):
         filtered_df = filtered_df[filtered_df['PRTY'].isin(filters['priorities'])]
 
     if filters.get('statuses'):
         filtered_df = filtered_df[filtered_df['STATUS'].isin(filters['statuses'])]
+
+    if filters.get('wda_flags'):
+        filtered_df = filtered_df[filtered_df['WDA_FLAG'].isin(filters['wda_flags'])]
 
     if filters.get('expired_filter'):
         if 'true' in filters['expired_filter'] and 'false' not in filters['expired_filter']:

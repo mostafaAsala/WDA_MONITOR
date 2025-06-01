@@ -507,16 +507,16 @@
                         </div>
                     </div>
 
-                    <!-- Expired vs Active Chart -->
+                    <!-- WDA Flag Chart -->
                     <div class="col-md-6 chart-container">
                         <div class="chart-header">
-                            <h4>Expired vs Active Parts</h4>
-                            <button class="download-btn" onclick="downloadChart('expiredChart')">
+                            <h4>WDA Flag Distribution</h4>
+                            <button class="download-btn" onclick="downloadChart('wdaFlagChart')">
                                 <i class="fas fa-download"></i>
                             </button>
                         </div>
                         <div class="position-relative h-100">
-                            <div id="expiredChart"></div>
+                            <div id="wdaFlagChart"></div>
                             <div class="chart-loading">
                                 <div class="spinner-border text-primary" role="status">
                                     <span class="visually-hidden">Loading...</span>
@@ -560,13 +560,14 @@
                                 <table class="data-table" id="dataTable">
                                     <thead>
                                         <tr>
-                                            <th>MAN_ID</th>
-                                            <th>MOD_ID</th>
-                                            <th>PRTY</th>
-                                            <th>STATUS</th>
-                                            <th>LR_DATE</th>
-                                            <th>COUNT</th>
-                                            <th>Is Expired</th>
+                                            <th>Manufacturer</th>
+                                            <th>Module</th>
+                                            <th>Priority</th>
+                                            <th>Status</th>
+                                            <th>WDA Flag</th>
+                                            <th>LR Date</th>
+                                            <th>Count</th>
+                                            <th>Expired</th>
                                         </tr>
                                     </thead>
                                     <tbody id="dataTableBody">
@@ -658,33 +659,34 @@
             filterContainer.empty();
 
             // Use pre-loaded filter options for better performance
-            const manIds = filterOptions.man_ids || [];
-            const modIds = filterOptions.mod_ids || [];
+            const manNames = filterOptions.man_names || [];
+            const moduleNames = filterOptions.module_names || [];
             const priorities = filterOptions.priorities || [];
             const statuses = filterOptions.statuses || [];
+            const wdaFlags = filterOptions.wda_flags || [];
 
             // Create filter HTML with Select All buttons
             const filtersHTML = `
                 <div class="filter-wrapper">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <label class="form-label mb-0">Manufacturer ID</label>
-                        <button type="button" class="btn btn-sm btn-outline-primary select-all-btn" data-target="manIdFilter">
+                        <label class="form-label mb-0">Manufacturer Name</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary select-all-btn" data-target="manNameFilter">
                             Select All
                         </button>
                     </div>
-                    <select class="form-select select2" id="manIdFilter" multiple>
-                        ${manIds.map(id => `<option value="${id}">${id}</option>`).join('')}
+                    <select class="form-select select2" id="manNameFilter" multiple>
+                        ${manNames.map(name => `<option value="${name}">${name}</option>`).join('')}
                     </select>
                 </div>
                 <div class="filter-wrapper">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <label class="form-label mb-0">Module ID</label>
-                        <button type="button" class="btn btn-sm btn-outline-primary select-all-btn" data-target="modIdFilter">
+                        <label class="form-label mb-0">Module Name</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary select-all-btn" data-target="moduleNameFilter">
                             Select All
                         </button>
                     </div>
-                    <select class="form-select select2" id="modIdFilter" multiple>
-                        ${modIds.map(id => `<option value="${id}">${id}</option>`).join('')}
+                    <select class="form-select select2" id="moduleNameFilter" multiple>
+                        ${moduleNames.map(name => `<option value="${name}">${name}</option>`).join('')}
                     </select>
                 </div>
                 <div class="filter-wrapper">
@@ -707,6 +709,17 @@
                     </div>
                     <select class="form-select select2" id="statusFilter" multiple>
                         ${statuses.map(s => `<option value="${s}">${s}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="filter-wrapper">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0">WDA Flag</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary select-all-btn" data-target="wdaFlagFilter">
+                            Select All
+                        </button>
+                    </div>
+                    <select class="form-select select2" id="wdaFlagFilter" multiple>
+                        ${wdaFlags.map(flag => `<option value="${flag}">${flag === 'Y' ? 'Yes' : 'No'}</option>`).join('')}
                     </select>
                 </div>
                 <div class="filter-wrapper">
@@ -775,18 +788,20 @@
 
         // Apply filters using server-side aggregation API
         async function applyFilters() {
-            const manIdFilter = $('#manIdFilter').val();
-            const modIdFilter = $('#modIdFilter').val();
+            const manNameFilter = $('#manNameFilter').val();
+            const moduleNameFilter = $('#moduleNameFilter').val();
             const priorityFilter = $('#priorityFilter').val();
             const statusFilter = $('#statusFilter').val();
+            const wdaFlagFilter = $('#wdaFlagFilter').val();
             const expiredFilter = $('#expiredFilter').val();
 
             // Update current filters
             currentFilters = {
-                man_ids: manIdFilter || [],
-                mod_ids: modIdFilter || [],
+                man_names: manNameFilter || [],
+                module_names: moduleNameFilter || [],
                 priorities: priorityFilter || [],
                 statuses: statusFilter || [],
+                wda_flags: wdaFlagFilter || [],
                 expired_filter: expiredFilter || []
             };
 
@@ -848,6 +863,8 @@
             const notFoundParts = stats.not_found_parts;
             const notRunParts = stats.not_run_parts;
             const expiredParts = stats.expired_parts;
+            const uniqueModules = stats.unique_modules;
+            const uniqueManufacturers = stats.unique_manufacturers;
             const foundPercentage = stats.found_percentage;
             const notFoundPercentage = stats.not_found_percentage;
             const notRunPercentage = stats.not_run_percentage;
@@ -930,7 +947,7 @@
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <h6 class="card-subtitle mb-2">Unique Manufacturers</h6>
-                                    <h2 class="card-title mb-0">${1}</h2>
+                                    <h2 class="card-title mb-0">${uniqueManufacturers}</h2>
                                     <small class="opacity-75">Active manufacturers</small>
                                 </div>
                                 <i class="fas fa-industry stat-icon"></i>
@@ -971,7 +988,7 @@
             updateStatusChart();
             updatePriorityChart();
             updateManufacturerChart();
-            updateExpiredChart();
+            updateWdaFlagChart();
             updateTimelineChart();
         }
 
@@ -1318,6 +1335,73 @@
             Plotly.newPlot('manufacturerChart', data, layout, config);
         }
 
+        // Update WDA flag distribution chart
+        function updateWdaFlagChart() {
+            if (!currentAggregations.charts || !currentAggregations.charts.wda_flag) {
+                console.warn('No WDA flag chart data available');
+                return;
+            }
+
+            const wdaFlagData = currentAggregations.charts.wda_flag;
+            const labels = wdaFlagData.labels.map(label => label === 'Y' ? 'Yes' : 'No');
+            const values = wdaFlagData.values;
+            const colors = wdaFlagData.labels.map(label => wdaFlagData.colors[label] || '#95a5a6');
+
+            const data = [{
+                values: values,
+                labels: labels,
+                type: 'pie',
+                hole: 0.4,
+                textinfo: 'label+percent+value',
+                textposition: 'auto',
+                hovertemplate: '<b>%{label}</b><br>' +
+                              'Count: %{value:,}<br>' +
+                              'Percentage: %{percent}<br>' +
+                              '<extra></extra>',
+                marker: {
+                    colors: colors,
+                    line: {
+                        color: '#ffffff',
+                        width: 2
+                    }
+                },
+                textfont: {
+                    size: 12,
+                    color: '#ffffff'
+                }
+            }];
+
+            const layout = {
+                showlegend: true,
+                legend: {
+                    orientation: 'v',
+                    x: 1,
+                    y: 0.5,
+                    font: {
+                        size: 12,
+                        color: '#333'
+                    }
+                },
+                margin: { t: 20, b: 20, l: 20, r: 80 },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: {
+                    family: 'Arial, sans-serif',
+                    size: 12,
+                    color: '#333'
+                }
+            };
+
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d', 'autoScale2d'],
+                displaylogo: false
+            };
+
+            Plotly.newPlot('wdaFlagChart', data, layout, config);
+        }
+
         // Update expired vs active chart
         function updateExpiredChart() {
             if (!currentAggregations.charts || !currentAggregations.charts.expired) {
@@ -1386,7 +1470,7 @@
             tableBody.empty();
 
             if (!currentAggregations.table_data || currentAggregations.table_data.length === 0) {
-                tableBody.append('<tr><td colspan="7" class="text-center">No data available</td></tr>');
+                tableBody.append('<tr><td colspan="8" class="text-center">No data available</td></tr>');
                 return;
             }
 
@@ -1402,12 +1486,17 @@
 
                 const statusBadge = getStatusBadge(item.STATUS);
 
+                const wdaFlagBadge = item.WDA_FLAG === 'Y' ?
+                    '<span class="badge bg-success">Yes</span>' :
+                    '<span class="badge bg-danger">No</span>';
+
                 const row = `
                     <tr>
-                        <td>${item.MAN_ID}</td>
-                        <td>${item.MOD_ID}</td>
+                        <td>${item.MAN_NAME}</td>
+                        <td>${item.MODULE_NAME}</td>
                         <td><span class="badge bg-info">${item.PRTY}</span></td>
                         <td>${statusBadge}</td>
+                        <td>${wdaFlagBadge}</td>
                         <td>${item.LR_DATE || 'N/A'}</td>
                         <td><strong>${item.COUNT.toLocaleString()}</strong></td>
                         <td>${expiredBadge}</td>
@@ -1491,10 +1580,11 @@
 
                 // Get current filter values
                 const filters = {
-                    man_ids: $('#manIdFilter').val() || [],
-                    mod_ids: $('#modIdFilter').val() || [],
+                    man_names: $('#manNameFilter').val() || [],
+                    module_names: $('#moduleNameFilter').val() || [],
                     priorities: $('#priorityFilter').val() || [],
                     statuses: $('#statusFilter').val() || [],
+                    wda_flags: $('#wdaFlagFilter').val() || [],
                     expired_filter: $('#expiredFilter').val() || []
                 };
 
