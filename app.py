@@ -1508,20 +1508,38 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
             'colors': ['#27ae60', '#e67e22']
         }
 
-        # Timeline data (by LR_DATE)
-        timeline_data = {'dates': [], 'counts': []}
+        # Timeline data (by LR_DATE) - initially show past year
+        timeline_data = {'dates': [], 'counts': [], 'date_range': {'min_date': '', 'max_date': ''}}
         if 'LR_DATE' in df.columns:
             df_timeline = df.copy()
             df_timeline['LR_DATE'] = pd.to_datetime(df_timeline['LR_DATE'], errors='coerce')
             df_timeline = df_timeline.dropna(subset=['LR_DATE'])
 
             if not df_timeline.empty:
-                df_timeline['date_only'] = df_timeline['LR_DATE'].dt.date
-                timeline_counts = df_timeline.groupby('date_only')['COUNT'].sum().sort_index()
-                timeline_data = {
-                    'dates': [str(d) for d in timeline_counts.index],
-                    'counts': [int(v) for v in timeline_counts.values]
-                }
+                # Get date range for filter options
+                min_date = df_timeline['LR_DATE'].min().date()
+                max_date = df_timeline['LR_DATE'].max().date()
+
+                # Default to past year for initial display
+                one_year_ago = datetime.now().date() - timedelta(days=365)
+                start_date = max(min_date, one_year_ago)  # Use the later of min_date or one year ago
+
+                # Filter to past year by default
+                df_timeline_filtered = df_timeline[df_timeline['LR_DATE'].dt.date >= start_date]
+
+                if not df_timeline_filtered.empty:
+                    df_timeline_filtered['date_only'] = df_timeline_filtered['LR_DATE'].dt.date
+                    timeline_counts = df_timeline_filtered.groupby('date_only')['COUNT'].sum().sort_index()
+                    timeline_data = {
+                        'dates': [str(d) for d in timeline_counts.index],
+                        'counts': [int(v) for v in timeline_counts.values],
+                        'date_range': {
+                            'min_date': str(min_date),
+                            'max_date': str(max_date),
+                            'default_start': str(start_date),
+                            'default_end': str(max_date)
+                        }
+                    }
 
         # Use the already extracted CS labels for filter options (reuse from chart calculation)
         cs_labels = all_cs_labels
@@ -1798,6 +1816,19 @@ def apply_wda_reg_filters(df, filters):
         pattern = '|'.join([f'\\b{re.escape(label)}\\b' for label in cs_filter_labels])
         mask = filtered_df['CS_clean'].str.contains(pattern, regex=True, na=False)
         filtered_df = filtered_df[mask]
+
+    # Date range filter for timeline
+    if filters.get('date_start') or filters.get('date_end'):
+        if 'LR_DATE' in filtered_df.columns:
+            filtered_df['LR_DATE'] = pd.to_datetime(filtered_df['LR_DATE'], errors='coerce')
+
+            if filters.get('date_start'):
+                start_date = pd.to_datetime(filters['date_start']).date()
+                filtered_df = filtered_df[filtered_df['LR_DATE'].dt.date >= start_date]
+
+            if filters.get('date_end'):
+                end_date = pd.to_datetime(filters['date_end']).date()
+                filtered_df = filtered_df[filtered_df['LR_DATE'].dt.date <= end_date]
 
     return filtered_df
 

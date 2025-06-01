@@ -552,9 +552,25 @@
                     <div class="col-12 chart-container">
                         <div class="chart-header">
                             <h4>Activity Timeline</h4>
-                            <button class="download-btn" onclick="downloadChart('timelineChart')">
-                                <i class="fas fa-download"></i>
-                            </button>
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="d-flex align-items-center gap-2">
+                                    <label for="timelineStartDate" class="form-label mb-0 text-nowrap">From:</label>
+                                    <input type="date" id="timelineStartDate" class="form-control form-control-sm" style="width: 150px;">
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <label for="timelineEndDate" class="form-label mb-0 text-nowrap">To:</label>
+                                    <input type="date" id="timelineEndDate" class="form-control form-control-sm" style="width: 150px;">
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="applyTimelineFilter">
+                                    Apply
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="resetTimelineFilter">
+                                    Reset
+                                </button>
+                                <button class="download-btn" onclick="downloadChart('timelineChart')">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                            </div>
                         </div>
                         <div class="position-relative h-100">
                             <div id="timelineChart"></div>
@@ -611,6 +627,7 @@
         let currentFilters = {};
         let filterOptions = {};
         let isFiltered = false;
+        let timelineDateRange = {}; // Store timeline date range info
 
         // Initialize the page
         $(document).ready(function() {
@@ -632,6 +649,12 @@
                     filterOptions = currentAggregations.filter_options || {};
                     isFiltered = false;
                     currentFilters = {};
+
+                    // Initialize timeline date range
+                    if (currentAggregations.charts && currentAggregations.charts.timeline && currentAggregations.charts.timeline.date_range) {
+                        timelineDateRange = currentAggregations.charts.timeline.date_range;
+                        initializeTimelineDateInputs();
+                    }
 
                     updateUI();
 
@@ -832,7 +855,7 @@
             const expiredFilter = $('#expiredFilter').val();
             const csFilter = $('#csFilter').val();
 
-            // Update current filters
+            // Update current filters (preserve existing date filters if they exist)
             currentFilters = {
                 man_names: manNameFilter || [],
                 module_names: moduleNameFilter || [],
@@ -840,11 +863,18 @@
                 statuses: statusFilter || [],
                 wda_flags: wdaFlagFilter || [],
                 expired_filter: expiredFilter || [],
-                cs_labels: csFilter || []
+                cs_labels: csFilter || [],
+                ...(currentFilters.date_start && { date_start: currentFilters.date_start }),
+                ...(currentFilters.date_end && { date_end: currentFilters.date_end })
             };
 
-            // Check if any filters are applied
-            const hasFilters = Object.values(currentFilters).some(filter => filter.length > 0);
+            // Check if any filters are applied (including date filters)
+            const hasFilters = Object.entries(currentFilters).some(([key, value]) => {
+                if (key === 'date_start' || key === 'date_end') {
+                    return value && value.trim() !== '';
+                }
+                return Array.isArray(value) && value.length > 0;
+            });
 
             if (!hasFilters) {
                 // No filters applied, restore original aggregations from backup
@@ -1647,12 +1677,66 @@
             }
         }
 
+        // Initialize timeline date inputs
+        function initializeTimelineDateInputs() {
+            if (timelineDateRange.default_start && timelineDateRange.default_end) {
+                $('#timelineStartDate').val(timelineDateRange.default_start);
+                $('#timelineEndDate').val(timelineDateRange.default_end);
+
+                // Set min and max attributes
+                $('#timelineStartDate').attr('min', timelineDateRange.min_date);
+                $('#timelineStartDate').attr('max', timelineDateRange.max_date);
+                $('#timelineEndDate').attr('min', timelineDateRange.min_date);
+                $('#timelineEndDate').attr('max', timelineDateRange.max_date);
+            }
+        }
+
+        // Apply timeline date filter
+        async function applyTimelineFilter() {
+            const startDate = $('#timelineStartDate').val();
+            const endDate = $('#timelineEndDate').val();
+
+            if (!startDate || !endDate) {
+                showNotification('Please select both start and end dates', 'error');
+                return;
+            }
+
+            if (startDate > endDate) {
+                showNotification('Start date cannot be after end date', 'error');
+                return;
+            }
+
+            // Add date filters to current filters
+            currentFilters.date_start = startDate;
+            currentFilters.date_end = endDate;
+
+            // Apply all filters including date range
+            await applyFilters();
+        }
+
+        // Reset timeline date filter
+        function resetTimelineFilter() {
+            if (timelineDateRange.default_start && timelineDateRange.default_end) {
+                $('#timelineStartDate').val(timelineDateRange.default_start);
+                $('#timelineEndDate').val(timelineDateRange.default_end);
+
+                // Remove date filters from current filters
+                delete currentFilters.date_start;
+                delete currentFilters.date_end;
+
+                // Reapply filters without date range
+                applyFilters();
+            }
+        }
+
         // Setup event handlers
         function setupEventHandlers() {
             $('#refreshData').on('click', loadData);
             $('#forceRefreshData').on('click', forceRefreshData);
             $('#clearFilters').on('click', clearAllFilters);
             $('#downloadData').on('click', downloadTableData);
+            $('#applyTimelineFilter').on('click', applyTimelineFilter);
+            $('#resetTimelineFilter').on('click', resetTimelineFilter);
         }
 
 
@@ -1668,6 +1752,12 @@
             // Reset current filters and state
             currentFilters = {};
             isFiltered = false;
+
+            // Reset timeline date inputs to default
+            if (timelineDateRange.default_start && timelineDateRange.default_end) {
+                $('#timelineStartDate').val(timelineDateRange.default_start);
+                $('#timelineEndDate').val(timelineDateRange.default_end);
+            }
 
             // Reset all Select All buttons
             $('.select-all-btn').each(function() {
@@ -1697,7 +1787,9 @@
                     statuses: $('#statusFilter').val() || [],
                     wda_flags: $('#wdaFlagFilter').val() || [],
                     expired_filter: $('#expiredFilter').val() || [],
-                    cs_labels: $('#csFilter').val() || []
+                    cs_labels: $('#csFilter').val() || [],
+                    ...(currentFilters.date_start && { date_start: currentFilters.date_start }),
+                    ...(currentFilters.date_end && { date_end: currentFilters.date_end })
                 };
 
                 const response = await fetch('/api/download-wda-reg-filtered', {
