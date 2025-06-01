@@ -607,6 +607,7 @@
     <script>
         // Global variables - only aggregated data, no raw data
         let currentAggregations = {};
+        let originalAggregations = {}; // Backup of original data for filter clearing
         let currentFilters = {};
         let filterOptions = {};
         let isFiltered = false;
@@ -627,6 +628,7 @@
 
                 if (result.status === 'success') {
                     currentAggregations = result.aggregations || {};
+                    originalAggregations = JSON.parse(JSON.stringify(currentAggregations)); // Deep copy for backup
                     filterOptions = currentAggregations.filter_options || {};
                     isFiltered = false;
                     currentFilters = {};
@@ -845,9 +847,11 @@
             const hasFilters = Object.values(currentFilters).some(filter => filter.length > 0);
 
             if (!hasFilters) {
-                // No filters applied, use original aggregations
+                // No filters applied, restore original aggregations from backup
+                currentAggregations = JSON.parse(JSON.stringify(originalAggregations)); // Deep copy from backup
                 isFiltered = false;
                 updateUI();
+                showNotification('Showing all data (no filters applied)', 'success');
                 return;
             }
 
@@ -1654,9 +1658,15 @@
 
 
         // Clear all filters
-        function clearAllFilters() {
-            $('.select2').val(null).trigger('change');
-            currentFilters = {}; // Reset current filters
+        async function clearAllFilters() {
+            // Temporarily remove event listeners to prevent triggering applyFilters
+            $('.select2').off('change', applyFilters);
+
+            // Clear all select2 values without triggering change events
+            $('.select2').val(null).trigger('change.select2');
+
+            // Reset current filters and state
+            currentFilters = {};
             isFiltered = false;
 
             // Reset all Select All buttons
@@ -1665,8 +1675,13 @@
                 $(this).removeClass('btn-outline-secondary').addClass('btn-outline-primary');
             });
 
-            // Reload original data
-            loadData();
+            // Reload original data from cache/API
+            await loadData();
+
+            // Re-attach event listeners after data is loaded
+            $('.select2').on('change', applyFilters);
+
+            showNotification('All filters cleared', 'success');
         }
 
         // Download table data using optimized API
