@@ -1,4 +1,5 @@
 @echo off
+title WDA_MONITOR
 SET FLASK_ENV=production
 SET FLASK_APP=wsgi.py
 

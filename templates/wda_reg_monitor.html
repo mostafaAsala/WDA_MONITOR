@@ -58,6 +58,17 @@
         .percentage-high { background-color: #28a745; }
         .percentage-medium { background-color: #ffc107; }
         .percentage-low { background-color: #dc3545; }
+        .sortable {
+            cursor: pointer;
+            user-select: none;
+        }
+        .sort-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            font-size: 12px;
+            vertical-align: middle;
+        }
 
         .alert {
             position: fixed;
@@ -645,20 +656,20 @@
                             <div class="data-table-container">
                                 <table class="data-table" id="dataTable">
                                     <thead>
-                                        <tr>
-                                            <th>Manufacturer</th>
-                                            <th>Module</th>
-                                            <th>Total Count</th>
-                                            <th>Outdated</th>
-                                            <th>Outdated %</th>
-                                            <th>Expired</th>
-                                            <th>Expired %</th>
-                                            <th>Found</th>
-                                            <th>Found %</th>
-                                            <th>Not Found</th>
-                                            <th>Not Found %</th>
-                                        </tr>
-                                    </thead>
+    <tr>
+        <th class="sortable" data-key="MAN_NAME">Manufacturer <span class="sort-indicator"></span></th>
+        <th class="sortable" data-key="MODULE_NAME">Module <span class="sort-indicator"></span></th>
+        <th class="sortable" data-key="COUNT">Total Count <span class="sort-indicator"></span></th>
+        <th class="sortable" data-key="outdated">Outdated <span class="sort-indicator"></span></th>
+        <th class="sortable" data-key="outdatedPerc">Outdated % <span class="sort-indicator"></span></th>
+        <th class="sortable" data-key="expired">Expired <span class="sort-indicator"></span></th>
+        <th class="sortable" data-key="expiredPerc">Expired % <span class="sort-indicator"></span></th>
+        <th class="sortable" data-key="found">Found <span class="sort-indicator"></span></th>
+        <th class="sortable" data-key="foundPerc">Found % <span class="sort-indicator"></span></th>
+        <th class="sortable" data-key="notfound">Not Found <span class="sort-indicator"></span></th>
+        <th class="sortable" data-key="notfoundPerc">Not Found % <span class="sort-indicator"></span></th>
+    </tr>
+</thead>
                                     <tbody id="dataTableBody">
                                         <!-- Data will be populated dynamically -->
                                     </tbody>
@@ -2079,61 +2090,110 @@
         }
 
         // Function to update table data
-        function updateDataTable() {
-            
-            console.log("currentAggregations.data_table",currentAggregations)
-            if (currentAggregations.table_data
-            ) {
-                const tableBody = document.getElementById('dataTableBody');
-                tableBody.innerHTML = '';
-                console.log("currentAggregations.data_table",currentAggregations.table_data
-                )
-                currentAggregations.table_data
-                .forEach(row => {
-                    const totalCount = row.COUNT || 0;
-                    const outdatedPerc = totalCount > 0 ? ((row.outdated || 0) / totalCount * 100).toFixed(1) : '0.0';
-                    const expiredPerc = totalCount > 0 ? ((row.expired || 0) / totalCount * 100).toFixed(1) : '0.0';
-                    const foundPerc = totalCount > 0 ? ((row.found || 0) / totalCount * 100).toFixed(1) : '0.0';
-                    const notfoundPerc = totalCount > 0 ? ((row.notfound || 0) / totalCount * 100).toFixed(1) : '0.0';
+        // --- Sorting Logic ---
+        let currentSort = { key: null, direction: 'asc' };
+        let sortedTableData = [];
 
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td>${row.MAN_NAME || ''}</td>
-                        <td>${row.MODULE_NAME || ''}</td>
-                        <td>${totalCount}</td>
-                        <td>${row.outdated || 0}</td>
-                        <td class="percentage-cell">
-                            ${outdatedPerc}%
-                            <span class="percentage-indicator ${getPercentageColorClass(100 - parseFloat(outdatedPerc))}"></span>
-                        </td>
-                        <td>${row.expired || 0}</td>
-                        <td class="percentage-cell">
-                            ${expiredPerc}%
-                            <span class="percentage-indicator ${getPercentageColorClass(100 - parseFloat(expiredPerc))}"></span>
-                        </td>
-                        <td>${row.found || 0}</td>
-                        <td class="percentage-cell">
-                            ${foundPerc}%
-                            <span class="percentage-indicator ${getPercentageColorClass(parseFloat(foundPerc))}"></span>
-                        </td>
-                        <td>${row.notfound || 0}</td>
-                        <td class="percentage-cell">
-                            ${notfoundPerc}%
-                            <span class="percentage-indicator ${getPercentageColorClass(100 - parseFloat(notfoundPerc))}"></span>
-                        </td>
-                    `;
-                    tableBody.appendChild(tr);
-                });
-            }else{
+        function sortTableData(key) {
+            if (!sortedTableData.length) return;
+            let direction = 'asc';
+            if (currentSort.key === key && currentSort.direction === 'asc') {
+                direction = 'desc';
+            }
+            currentSort = { key, direction };
+
+            sortedTableData.sort((a, b) => {
+                let aValue, bValue;
+                // For percentage columns, calculate on the fly
+                if (key.endsWith('Perc')) {
+                    const metric = key.replace('Perc', '');
+                    aValue = a[metric] && a.COUNT ? (a[metric] / a.COUNT) * 100 : 0;
+                    bValue = b[metric] && b.COUNT ? (b[metric] / b.COUNT) * 100 : 0;
+                } else {
+                    aValue = a[key];
+                    bValue = b[key];
+                }
+                if (typeof aValue === 'string') aValue = aValue.toLowerCase();
+                if (typeof bValue === 'string') bValue = bValue.toLowerCase();
+                if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+                if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        function updateTableSortIndicators() {
+            document.querySelectorAll('.sortable').forEach(th => {
+                const span = th.querySelector('.sort-indicator');
+                span.textContent = '';
+                if (th.dataset.key === currentSort.key) {
+                    span.textContent = currentSort.direction === 'asc' ? '▲' : '▼';
+                }
+            });
+        }
+
+        function updateDataTable() {
+            // Use sortedTableData if set, else fall back to currentAggregations.table_data
+            let data = sortedTableData.length ? sortedTableData : (currentAggregations.table_data || []);
+            if (!data.length) {
                 const tableBody = document.getElementById('dataTableBody');
                 tableBody.innerHTML = '';
                 const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="11" class="text-center">No data available</td>`;
+                tableBody.appendChild(tr);
+                return;
+            }
+            const tableBody = document.getElementById('dataTableBody');
+            tableBody.innerHTML = '';
+            data.forEach(row => {
+                const totalCount = row.COUNT || 0;
+                const outdatedPerc = totalCount > 0 ? ((row.outdated || 0) / totalCount * 100).toFixed(1) : '0.0';
+                const expiredPerc = totalCount > 0 ? ((row.expired || 0) / totalCount * 100).toFixed(1) : '0.0';
+                const foundPerc = totalCount > 0 ? ((row.found || 0) / totalCount * 100).toFixed(1) : '0.0';
+                const notfoundPerc = totalCount > 0 ? ((row.notfound || 0) / totalCount * 100).toFixed(1) : '0.0';
+                const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td colspan="11" class="text-center">No data available</td>
+                    <td>${row.MAN_NAME || ''}</td>
+                    <td>${row.MODULE_NAME || ''}</td>
+                    <td>${totalCount}</td>
+                    <td>${row.outdated || 0}</td>
+                    <td class="percentage-cell">
+                        ${outdatedPerc}%
+                        <span class="percentage-indicator ${getPercentageColorClass(100 - parseFloat(outdatedPerc))}"></span>
+                    </td>
+                    <td>${row.expired || 0}</td>
+                    <td class="percentage-cell">
+                        ${expiredPerc}%
+                        <span class="percentage-indicator ${getPercentageColorClass(100 - parseFloat(expiredPerc))}"></span>
+                    </td>
+                    <td>${row.found || 0}</td>
+                    <td class="percentage-cell">
+                        ${foundPerc}%
+                        <span class="percentage-indicator ${getPercentageColorClass(parseFloat(foundPerc))}"></span>
+                    </td>
+                    <td>${row.notfound || 0}</td>
+                    <td class="percentage-cell">
+                        ${notfoundPerc}%
+                        <span class="percentage-indicator ${getPercentageColorClass(100 - parseFloat(notfoundPerc))}"></span>
+                    </td>
                 `;
                 tableBody.appendChild(tr);
-            }
+            });
+            updateTableSortIndicators();
         }
+
+        // Attach sorting handlers after DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.sortable').forEach(th => {
+                th.addEventListener('click', function() {
+                    const key = th.dataset.key;
+                    // Always sort from the base data source
+                    sortedTableData = (currentAggregations.table_data || []).slice();
+                    sortTableData(key);
+                    updateDataTable();
+                });
+            });
+        });
+
 
         // Show notification
         function showNotification(message, type) {
