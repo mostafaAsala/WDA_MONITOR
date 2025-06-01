@@ -149,6 +149,14 @@ def load_wda_reg_system_data():
 				for col in date_columns:
 					if col in wda_reg_system_data.columns:
 						wda_reg_system_data[col] = pd.to_datetime(wda_reg_system_data[col], errors='coerce')
+				print(wda_reg_system_data.columns)
+				wda_reg_system_data['MAN_ID'] = wda_reg_system_data['MAN_ID'].astype(str)
+				wda_reg_system_data['MOD_ID'] = wda_reg_system_data['MOD_ID'].astype(str)
+				wda_reg_system_data['PRTY'] = wda_reg_system_data['PRTY'].astype(str)
+				wda_reg_system_data['STATUS'] = wda_reg_system_data['STATUS'].astype(str)
+				wda_reg_system_data['COUNT'] = wda_reg_system_data['COUNT'].astype(int)
+				wda_reg_system_data['CS'] = wda_reg_system_data['CS'].astype(str)
+
 
 				# Convert boolean column
 				if 'is_expired' in wda_reg_system_data.columns:
@@ -1412,11 +1420,135 @@ def get_status_by_date():
     print(status_counts)
     return jsonify({"date": date, "status_counts": status_counts})
 
+def calculate_wda_reg_aggregations(df:pd.DataFrame):
+    """Calculate pre-aggregated data for WDA_Reg visualizations"""
+    try:
+        # Basic statistics
+        total_parts = int(df['COUNT'].sum())
+        found_parts = int(df[df['STATUS'] == 'found']['COUNT'].sum())
+        not_found_parts = int(df[df['STATUS'] == 'not found']['COUNT'].sum())
+        not_run_parts = int(df[df['STATUS'] == 'not run']['COUNT'].sum())
+        expired_parts = int(df[df['is_expired'] == True]['COUNT'].sum())
+
+        # Calculate percentages
+        found_percentage = round((found_parts / total_parts) * 100, 1) if total_parts > 0 else 0
+        not_found_percentage = round((not_found_parts / total_parts) * 100, 1) if total_parts > 0 else 0
+        not_run_percentage = round((not_run_parts / total_parts) * 100, 1) if total_parts > 0 else 0
+        expired_percentage = round((expired_parts / total_parts) * 100, 1) if total_parts > 0 else 0
+
+        # Status distribution for charts
+        status_counts = df.groupby('STATUS')['COUNT'].sum().to_dict()
+        status_chart_data = {
+            'labels': list(status_counts.keys()),
+            'values': [int(v) for v in status_counts.values()],
+            'colors': {
+                'found': '#2ecc71',
+                'not found': '#e74c3c',
+                'not run': '#f39c12'
+            }
+        }
+
+        # Priority distribution
+        priority_counts = df.groupby('PRTY')['COUNT'].sum().to_dict()
+        priority_chart_data = {
+            'labels': sorted(priority_counts.keys()),
+            'values': [int(priority_counts[k]) for k in sorted(priority_counts.keys())]
+        }
+
+        # Top manufacturers (top 10)
+        manufacturer_counts = df.groupby('MAN_ID')['COUNT'].sum().sort_values(ascending=False).head(10).to_dict()
+        manufacturer_chart_data = {
+            'labels': list(manufacturer_counts.keys()),
+            'values': [int(v) for v in manufacturer_counts.values()]
+        }
+
+        # Expired vs Active
+        expired_chart_data = {
+            'labels': ['Active', 'Expired'],
+            'values': [total_parts - expired_parts, expired_parts],
+            'colors': ['#27ae60', '#e67e22']
+        }
+
+        # Timeline data (by LR_DATE)
+        timeline_data = {'dates': [], 'counts': []}
+        if 'LR_DATE' in df.columns:
+            df_timeline = df.copy()
+            df_timeline['LR_DATE'] = pd.to_datetime(df_timeline['LR_DATE'], errors='coerce')
+            df_timeline = df_timeline.dropna(subset=['LR_DATE'])
+
+            if not df_timeline.empty:
+                df_timeline['date_only'] = df_timeline['LR_DATE'].dt.date
+                timeline_counts = df_timeline.groupby('date_only')['COUNT'].sum().sort_index()
+                timeline_data = {
+                    'dates': [str(d) for d in timeline_counts.index],
+                    'counts': [int(v) for v in timeline_counts.values]
+                }
+
+        # Filter options for client-side filtering
+        filter_options = {
+            'man_ids': sorted(df['MAN_ID'].unique().tolist()),
+            'mod_ids': sorted(df['MOD_ID'].unique().tolist()),
+            'priorities': sorted(df['PRTY'].unique().tolist()),
+            'statuses': sorted(df['STATUS'].unique().tolist()),
+            'expired_options': ['true', 'false']
+        }
+
+        # Prepare aggregated table data (grouped by key dimensions)
+        table_data = []
+        grouped_df = df.groupby(['MAN_ID', 'MOD_ID', 'PRTY', 'STATUS']).agg({
+            'COUNT': 'sum',
+            'is_expired': 'first',  # Take first value as they should be consistent within group
+            'LR_DATE': 'first'
+        }).reset_index()
+
+        for _, row in grouped_df.iterrows():
+            table_data.append({
+                'MAN_ID': row['MAN_ID'],
+                'MOD_ID': row['MOD_ID'],
+                'PRTY': row['PRTY'],
+                'STATUS': row['STATUS'],
+                'COUNT': int(row['COUNT']),
+                'is_expired': bool(row['is_expired']),
+                'LR_DATE': str(row['LR_DATE']) if pd.notna(row['LR_DATE']) else ''
+            })
+
+        return {
+            'stats': {
+                'total_parts': total_parts,
+                'found_parts': found_parts,
+                'not_found_parts': not_found_parts,
+                'not_run_parts': not_run_parts,
+                'expired_parts': expired_parts,
+                'found_percentage': found_percentage,
+                'not_found_percentage': not_found_percentage,
+                'not_run_percentage': not_run_percentage,
+                'expired_percentage': expired_percentage,
+                'unique_manufacturers': len(df['MAN_ID'].unique())
+            },
+            'charts': {
+                'status': status_chart_data,
+                'priority': priority_chart_data,
+                'manufacturer': manufacturer_chart_data,
+                'expired': expired_chart_data,
+                'timeline': timeline_data
+            },
+            'filter_options': filter_options,
+            'table_data': table_data
+        }
+
+    except Exception as e:
+        app.logger.error(f'Error calculating WDA_Reg aggregations: {traceback.format_exc()}')
+        return {
+            'stats': {},
+            'charts': {},
+            'filter_options': {}
+        }
+
 @app.route('/api/wda-reg-data', methods=['GET'])
 @login_required
 @permission_required('view')
 def get_wda_reg_data():
-    """API endpoint to fetch WDA_Reg aggregated data from memory cache"""
+    """API endpoint to fetch WDA_Reg aggregated data with pre-calculated visualizations"""
     username = session['username']
     try:
         app.logger.info(f'User {username} fetching WDA_Reg aggregated data from cache')
@@ -1437,26 +1569,15 @@ def get_wda_reg_data():
             # Use cached data from memory
             df = wda_reg_system_data.copy()
 
-        # Convert datetime columns to string for JSON serialization
-        df_json = df.copy()
-        date_columns = ['LRD2', 'V_NOTFOUND_DAT2', 'LR_DATE', 'download_timestamp']
-        for col in date_columns:
-            if col in df_json.columns:
-                df_json[col] = df_json[col].astype(str)
+        # Pre-calculate aggregated data for visualizations
+        aggregated_data = calculate_wda_reg_aggregations(df)
 
-        # Convert boolean columns to string for JSON serialization
-        if 'is_expired' in df_json.columns:
-            df_json['is_expired'] = df_json['is_expired'].astype(str)
-
-        # Convert to records format for frontend
-        data_records = df_json.to_dict('records')
-
-        app.logger.info(f'Successfully served {len(data_records)} WDA_Reg records from cache')
+        app.logger.info(f'Successfully served WDA_Reg aggregations from cache ({len(df)} records processed)')
 
         return jsonify({
             'status': 'success',
-            'data': data_records,
-            'total_records': len(data_records),
+            'aggregations': aggregated_data,
+            'total_records': len(df),
             'from_cache': wda_reg_data_loaded
         })
 
@@ -1493,6 +1614,117 @@ def refresh_wda_reg_data():
         app.logger.error(f'Error refreshing WDA_Reg system data: {str(e)}')
         log_user_activity(username, 'WDA_REG_REFRESH_ERROR', f'Error refreshing WDA_Reg data: {str(e)}')
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/wda-reg-filtered-aggregations', methods=['POST'])
+@login_required
+@permission_required('view')
+def get_wda_reg_filtered_aggregations():
+    """API endpoint to get filtered aggregations for WDA_Reg data"""
+    username = session['username']
+    try:
+        app.logger.info(f'User {username} requesting filtered WDA_Reg aggregations')
+        log_user_activity(username, 'WDA_REG_FILTERED_ACCESS', 'Accessed filtered WDA_Reg aggregations')
+
+        global wda_reg_system_data, wda_reg_data_loaded
+
+        # Get data from memory cache
+        if not wda_reg_data_loaded or wda_reg_system_data.empty:
+            if not load_wda_reg_system_data():
+                df = get_wda_reg_aggregated_data()
+            else:
+                df = wda_reg_system_data.copy()
+        else:
+            df = wda_reg_system_data.copy()
+
+        # Apply filters from request
+        filters = request.json or {}
+        filtered_df = apply_wda_reg_filters(df, filters)
+
+        # Calculate aggregations for filtered data
+        aggregated_data = calculate_wda_reg_aggregations(filtered_df)
+
+        app.logger.info(f'Successfully served filtered WDA_Reg aggregations ({len(filtered_df)} records after filtering)')
+
+        return jsonify({
+            'status': 'success',
+            'aggregations': aggregated_data,
+            'total_records': len(filtered_df),
+            'filters_applied': filters
+        })
+
+    except Exception as e:
+        app.logger.error(f'Error getting filtered WDA_Reg aggregations: {str(e)}')
+        log_user_activity(username, 'WDA_REG_FILTERED_ERROR', f'Error getting filtered aggregations: {str(e)}')
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/api/download-wda-reg-filtered', methods=['POST'])
+@login_required
+@permission_required('view')
+def download_wda_reg_filtered():
+    """API endpoint to download filtered WDA_Reg data"""
+    username = session['username']
+    try:
+        app.logger.info(f'User {username} downloading filtered WDA_Reg data')
+        log_user_activity(username, 'WDA_REG_DOWNLOAD', 'Downloaded filtered WDA_Reg data')
+
+        global wda_reg_system_data, wda_reg_data_loaded
+
+        # Get data from memory cache
+        if not wda_reg_data_loaded or wda_reg_system_data.empty:
+            if not load_wda_reg_system_data():
+                df = get_wda_reg_aggregated_data()
+            else:
+                df = wda_reg_system_data.copy()
+        else:
+            df = wda_reg_system_data.copy()
+
+        # Apply filters from request
+        filters = request.json or {}
+        filtered_df = apply_wda_reg_filters(df, filters)
+
+        # Create temporary file for download
+        system_monitor_dir = os.path.join(os.getcwd(), "system_Monitor")
+        os.makedirs(system_monitor_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        temp_filename = f'wda_reg_filtered_data_{timestamp}.csv'
+        temp_filepath = os.path.join(system_monitor_dir, temp_filename)
+
+        # Save filtered data
+        filtered_df.to_csv(temp_filepath, index=False)
+
+        app.logger.info(f'Successfully created filtered WDA_Reg download file: {temp_filepath}')
+
+        return send_file(temp_filepath, as_attachment=True, download_name=temp_filename)
+
+    except Exception as e:
+        app.logger.error(f'Error downloading filtered WDA_Reg data: {str(e)}')
+        log_user_activity(username, 'WDA_REG_DOWNLOAD_ERROR', f'Error downloading WDA_Reg data: {str(e)}')
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+def apply_wda_reg_filters(df, filters):
+    """Apply filters to WDA_Reg data"""
+    filtered_df = df.copy()
+
+    if filters.get('man_ids'):
+        filtered_df = filtered_df[filtered_df['MAN_ID'].isin(filters['man_ids'])]
+
+    if filters.get('mod_ids'):
+        filtered_df = filtered_df[filtered_df['MOD_ID'].isin(filters['mod_ids'])]
+
+    if filters.get('priorities'):
+        filtered_df = filtered_df[filtered_df['PRTY'].isin(filters['priorities'])]
+
+    if filters.get('statuses'):
+        filtered_df = filtered_df[filtered_df['STATUS'].isin(filters['statuses'])]
+
+    if filters.get('expired_filter'):
+        if 'true' in filters['expired_filter'] and 'false' not in filters['expired_filter']:
+            filtered_df = filtered_df[filtered_df['is_expired'] == True]
+        elif 'false' in filters['expired_filter'] and 'true' not in filters['expired_filter']:
+            filtered_df = filtered_df[filtered_df['is_expired'] == False]
+
+    return filtered_df
 
 @app.route('/import-status')
 def import_status():

@@ -847,41 +847,55 @@ def download_wda_reg_system_data():
     try:
         # Use the working query from the original function
         aggregation_query = text("""
-            SELECT
-                man_id,
-                mod_id,
-                Prty,
-                cs,
-                LRD2,
-                v_notfound_dat2,
-                CASE
-                    WHEN v_notfound_dat2 > LRD2 THEN 'not found'
-                    WHEN LRD2 > v_notfound_dat2 THEN 'found'
-                    WHEN LRD2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY')
-                        AND v_notfound_dat2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') THEN 'not run'
-                END AS status,
+            with main_data as(
+SELECT 
+    man_id,
+    mod_id,
+    Prty,
+    cs,
+    LRD2,
+    v_notfound_dat2,  
+    CASE 
+        WHEN v_notfound_dat2 > LRD2 THEN 'not found'
+        WHEN LRD2 > v_notfound_dat2 THEN 'found'
+        WHEN LRD2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') 
+             AND v_notfound_dat2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') THEN 'not run'
+    END AS status,
 
-            CASE
-                WHEN v_notfound_dat2 > LRD2 THEN v_notfound_dat2
-                when LRD2 > v_notfound_dat2 then LRD2
-                ELSE Null
-            END AS LR_date,
-            count
+    
+  CASE 
+      WHEN v_notfound_dat2 > LRD2 THEN v_notfound_dat2
+      when LRD2 > v_notfound_dat2 then LRD2
+      ELSE Null
+  END AS LR_date,
+  count 
 
-            FROM (
-                SELECT
-                    man_id,
-                    mod_id,
-                    Prty,
-                    cs,
-                    NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS v_notfound_dat2,
-                    NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS LRD2,
-                    COUNT(*) AS count
-                FROM updatesys.TBL_Prty_pns_@NEW3_N
-                GROUP BY man_id, mod_id, Prty, cs,
-                        NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')),
-                        NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
-            )
+FROM (
+    SELECT 
+        man_id,
+        mod_id,
+        Prty,
+        cs,
+        NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS v_notfound_dat2,
+        NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS LRD2,
+        COUNT(*) AS count
+    FROM updatesys.TBL_Prty_pns_@NEW3_N
+    GROUP BY man_id, mod_id, Prty, cs, 
+             NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')),
+             NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
+))
+select 
+    z.man_name,
+    y.module_name,
+    y.wda_flag,
+    x.Prty,
+    x.cs,
+    x.LRD2,
+    x.v_notfound_dat2, 
+    x.status,
+    x.LR_date
+from main_data x join updatesys.tbl_man_modules@new3_n y on x.man_id = y.man_id and x.mod_id = y.module_id
+join cm.xlp_se_manufacturer@new3_n z on y.man_id = z.man_id 
         """)
 
         with engine.connect() as connection:

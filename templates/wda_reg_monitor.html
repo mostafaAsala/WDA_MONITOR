@@ -582,10 +582,11 @@
     </div>
 
     <script>
-        // Global variables
-        let rawData = [];
-        let filteredData = [];
+        // Global variables - only aggregated data, no raw data
+        let currentAggregations = {};
         let currentFilters = {};
+        let filterOptions = {};
+        let isFiltered = false;
 
         // Initialize the page
         $(document).ready(function() {
@@ -593,16 +594,20 @@
             setupEventHandlers();
         });
 
-        // Load data from API
+        // Load aggregated data from API (no raw data)
         async function loadData() {
             showLoading(true);
             try {
                 const response = await fetch('/api/wda-reg-data');
                 const result = await response.json();
+                console.log("Data loaded successfully");
 
                 if (result.status === 'success') {
-                    rawData = result.data;
-                    filteredData = [...rawData];
+                    currentAggregations = result.aggregations || {};
+                    filterOptions = currentAggregations.filter_options || {};
+                    isFiltered = false;
+                    currentFilters = {};
+
                     updateUI();
 
                     // Show different message based on data source
@@ -630,21 +635,16 @@
 
         // Update data information display
         function updateDataInfo() {
-            if (rawData.length > 0) {
-                // Get timestamp from first record if available
-                const firstRecord = rawData[0];
-                let timestampText = 'Unknown';
+            if (currentAggregations.stats) {
+                const totalRecords = currentAggregations.stats.total_parts || 0;
+                const uniqueManufacturers = currentAggregations.stats.unique_manufacturers || 0;
 
-                if (firstRecord.download_timestamp) {
-                    const timestamp = new Date(firstRecord.download_timestamp);
-                    timestampText = timestamp.toLocaleString();
-                } else if (firstRecord.download_date) {
-                    timestampText = firstRecord.download_date;
-                }
+                // Use current timestamp
+                const timestampText = new Date().toLocaleString();
 
                 $('#dataTimestamp').html(`<i class="fas fa-clock"></i> Last Updated: ${timestampText}`);
-                $('#dataRecordCount').html(`<i class="fas fa-list"></i> Total Records: ${rawData.length.toLocaleString()}`);
-                $('#dataSource').html(`<i class="fas fa-database"></i> Source: Memory Cache (Fast Loading)`);
+                $('#dataRecordCount').html(`<i class="fas fa-list"></i> Total Parts: ${totalRecords.toLocaleString()}`);
+                $('#dataSource').html(`<i class="fas fa-database"></i> Source: Aggregated Data (Optimized)`);
             } else {
                 $('#dataTimestamp').text('No data available');
                 $('#dataRecordCount').text('');
@@ -652,45 +652,70 @@
             }
         }
 
-        // Create filter controls dynamically
+        // Create filter controls dynamically with Select All functionality
         function createFilterControls() {
             const filterContainer = $('#filterControls');
             filterContainer.empty();
 
-            // Get unique values for each filter
-            const manIds = [...new Set(rawData.map(d => d.MAN_ID))].sort();
-            const modIds = [...new Set(rawData.map(d => d.MOD_ID))].sort();
-            const priorities = [...new Set(rawData.map(d => d.PRTY))].sort();
-            const statuses = [...new Set(rawData.map(d => d.STATUS))].sort();
+            // Use pre-loaded filter options for better performance
+            const manIds = filterOptions.man_ids || [];
+            const modIds = filterOptions.mod_ids || [];
+            const priorities = filterOptions.priorities || [];
+            const statuses = filterOptions.statuses || [];
 
-            // Create filter HTML
+            // Create filter HTML with Select All buttons
             const filtersHTML = `
                 <div class="filter-wrapper">
-                    <label class="form-label">Manufacturer ID</label>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0">Manufacturer ID</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary select-all-btn" data-target="manIdFilter">
+                            Select All
+                        </button>
+                    </div>
                     <select class="form-select select2" id="manIdFilter" multiple>
                         ${manIds.map(id => `<option value="${id}">${id}</option>`).join('')}
                     </select>
                 </div>
                 <div class="filter-wrapper">
-                    <label class="form-label">Module ID</label>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0">Module ID</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary select-all-btn" data-target="modIdFilter">
+                            Select All
+                        </button>
+                    </div>
                     <select class="form-select select2" id="modIdFilter" multiple>
                         ${modIds.map(id => `<option value="${id}">${id}</option>`).join('')}
                     </select>
                 </div>
                 <div class="filter-wrapper">
-                    <label class="form-label">Priority</label>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0">Priority</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary select-all-btn" data-target="priorityFilter">
+                            Select All
+                        </button>
+                    </div>
                     <select class="form-select select2" id="priorityFilter" multiple>
                         ${priorities.map(p => `<option value="${p}">${p}</option>`).join('')}
                     </select>
                 </div>
                 <div class="filter-wrapper">
-                    <label class="form-label">Status</label>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0">Status</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary select-all-btn" data-target="statusFilter">
+                            Select All
+                        </button>
+                    </div>
                     <select class="form-select select2" id="statusFilter" multiple>
                         ${statuses.map(s => `<option value="${s}">${s}</option>`).join('')}
                     </select>
                 </div>
                 <div class="filter-wrapper">
-                    <label class="form-label">Expired Status</label>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0">Expired Status</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary select-all-btn" data-target="expiredFilter">
+                            Select All
+                        </button>
+                    </div>
                     <select class="form-select select2" id="expiredFilter" multiple>
                         <option value="true">Expired</option>
                         <option value="false">Not Expired</option>
@@ -707,46 +732,126 @@
                 width: '100%'
             });
 
-            // Add event listeners
+            // Add event listeners for filters
             $('.select2').on('change', applyFilters);
-        }
 
-        // Apply filters to data
-        function applyFilters() {
-            filteredData = rawData.filter(item => {
-                const manIdFilter = $('#manIdFilter').val();
-                const modIdFilter = $('#modIdFilter').val();
-                const priorityFilter = $('#priorityFilter').val();
-                const statusFilter = $('#statusFilter').val();
-                const expiredFilter = $('#expiredFilter').val();
+            // Add event listeners for Select All buttons
+            $('.select-all-btn').on('click', function() {
+                const targetId = $(this).data('target');
+                const $select = $('#' + targetId);
+                const $button = $(this);
 
-                return (
-                    (!manIdFilter.length || manIdFilter.includes(String(item.MAN_ID))) &&
-                    (!modIdFilter.length || modIdFilter.includes(String(item.MOD_ID))) &&
-                    (!priorityFilter.length || priorityFilter.includes(item.PRTY)) &&
-                    (!statusFilter.length || statusFilter.includes(item.STATUS)) &&
-                    (!expiredFilter.length || expiredFilter.includes(String(item.is_expired)))
-                );
+                if ($button.text().trim() === 'Select All') {
+                    // Select all options
+                    $select.find('option').prop('selected', true);
+                    $select.trigger('change');
+                    $button.text('Deselect All');
+                    $button.removeClass('btn-outline-primary').addClass('btn-outline-secondary');
+                } else {
+                    // Deselect all options
+                    $select.find('option').prop('selected', false);
+                    $select.trigger('change');
+                    $button.text('Select All');
+                    $button.removeClass('btn-outline-secondary').addClass('btn-outline-primary');
+                }
             });
 
-            updateStatsCards();
-            updateCharts();
-            updateDataTable();
+            // Update button text based on selection
+            $('.select2').on('change', function() {
+                const selectId = $(this).attr('id');
+                const $button = $(`.select-all-btn[data-target="${selectId}"]`);
+                const selectedCount = $(this).val() ? $(this).val().length : 0;
+                const totalCount = $(this).find('option').length;
+
+                if (selectedCount === totalCount && totalCount > 0) {
+                    $button.text('Deselect All');
+                    $button.removeClass('btn-outline-primary').addClass('btn-outline-secondary');
+                } else {
+                    $button.text('Select All');
+                    $button.removeClass('btn-outline-secondary').addClass('btn-outline-primary');
+                }
+            });
         }
 
-        // Update statistics cards
-        function updateStatsCards() {
-            const totalParts = filteredData.reduce((sum, item) => sum + item.COUNT, 0);
-            const foundParts = filteredData.filter(item => item.STATUS === 'found').reduce((sum, item) => sum + item.COUNT, 0);
-            const notFoundParts = filteredData.filter(item => item.STATUS === 'not found').reduce((sum, item) => sum + item.COUNT, 0);
-            const notRunParts = filteredData.filter(item => item.STATUS === 'not run').reduce((sum, item) => sum + item.COUNT, 0);
-            const expiredParts = filteredData.filter(item => item.is_expired === true).reduce((sum, item) => sum + item.COUNT, 0);
+        // Apply filters using server-side aggregation API
+        async function applyFilters() {
+            const manIdFilter = $('#manIdFilter').val();
+            const modIdFilter = $('#modIdFilter').val();
+            const priorityFilter = $('#priorityFilter').val();
+            const statusFilter = $('#statusFilter').val();
+            const expiredFilter = $('#expiredFilter').val();
 
-            // Calculate percentages
-            const foundPercentage = totalParts > 0 ? ((foundParts / totalParts) * 100).toFixed(1) : 0;
-            const notFoundPercentage = totalParts > 0 ? ((notFoundParts / totalParts) * 100).toFixed(1) : 0;
-            const notRunPercentage = totalParts > 0 ? ((notRunParts / totalParts) * 100).toFixed(1) : 0;
-            const expiredPercentage = totalParts > 0 ? ((expiredParts / totalParts) * 100).toFixed(1) : 0;
+            // Update current filters
+            currentFilters = {
+                man_ids: manIdFilter || [],
+                mod_ids: modIdFilter || [],
+                priorities: priorityFilter || [],
+                statuses: statusFilter || [],
+                expired_filter: expiredFilter || []
+            };
+
+            // Check if any filters are applied
+            const hasFilters = Object.values(currentFilters).some(filter => filter.length > 0);
+
+            if (!hasFilters) {
+                // No filters applied, use original aggregations
+                isFiltered = false;
+                updateUI();
+                return;
+            }
+
+            // Filters applied, get filtered aggregations from server
+            try {
+                showLoading(true);
+
+                const response = await fetch('/api/wda-reg-filtered-aggregations', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(currentFilters)
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    currentAggregations = result.aggregations;
+                    isFiltered = true;
+
+                    updateStatsCards();
+                    updateCharts();
+                    updateDataTable();
+
+                    showNotification(`Filters applied (${result.total_records.toLocaleString()} records)`, 'success');
+                } else {
+                    throw new Error(result.message || 'Failed to apply filters');
+                }
+            } catch (error) {
+                console.error('Error applying filters:', error);
+                showNotification('Error applying filters: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Update statistics cards using current aggregations
+        function updateStatsCards() {
+            // Always use current aggregations (either original or filtered)
+            if (!currentAggregations.stats) {
+                console.warn('No stats data available');
+                return;
+            }
+
+            const stats = currentAggregations.stats;
+            const totalParts = stats.total_parts;
+            const foundParts = stats.found_parts;
+            const notFoundParts = stats.not_found_parts;
+            const notRunParts = stats.not_run_parts;
+            const expiredParts = stats.expired_parts;
+            const foundPercentage = stats.found_percentage;
+            const notFoundPercentage = stats.not_found_percentage;
+            const notRunPercentage = stats.not_run_percentage;
+            const expiredPercentage = stats.expired_percentage;
 
             const statsHTML = `
                 <div class="col-md-2">
@@ -825,7 +930,7 @@
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <h6 class="card-subtitle mb-2">Unique Manufacturers</h6>
-                                    <h2 class="card-title mb-0">${[...new Set(filteredData.map(item => item.MAN_ID))].length}</h2>
+                                    <h2 class="card-title mb-0">${1}</h2>
                                     <small class="opacity-75">Active manufacturers</small>
                                 </div>
                                 <i class="fas fa-industry stat-icon"></i>
@@ -872,21 +977,15 @@
 
         // Update status distribution chart
         function updateStatusChart() {
-            const statusCounts = {};
-            filteredData.forEach(item => {
-                statusCounts[item.STATUS] = (statusCounts[item.STATUS] || 0) + item.COUNT;
-            });
+            if (!currentAggregations.charts || !currentAggregations.charts.status) {
+                console.warn('No status chart data available');
+                return;
+            }
 
-            // Define colors for different statuses
-            const statusColors = {
-                'found': '#2ecc71',
-                'not found': '#e74c3c',
-                'not run': '#f39c12'
-            };
-
-            const labels = Object.keys(statusCounts);
-            const values = Object.values(statusCounts);
-            const colors = labels.map(label => statusColors[label] || '#95a5a6');
+            const statusData = currentAggregations.charts.status;
+            const labels = statusData.labels;
+            const values = statusData.values;
+            const colors = labels.map(label => statusData.colors[label] || '#95a5a6');
 
             const data = [{
                 values: values,
@@ -941,14 +1040,14 @@
 
         // Update priority distribution chart
         function updatePriorityChart() {
-            const priorityCounts = {};
-            filteredData.forEach(item => {
-                priorityCounts[item.PRTY] = (priorityCounts[item.PRTY] || 0) + item.COUNT;
-            });
+            if (!currentAggregations.charts || !currentAggregations.charts.priority) {
+                console.warn('No priority chart data available');
+                return;
+            }
 
-            // Sort priorities for better visualization
-            const sortedPriorities = Object.keys(priorityCounts).sort();
-            const values = sortedPriorities.map(priority => priorityCounts[priority]);
+            const priorityData = currentAggregations.charts.priority;
+            const sortedPriorities = priorityData.labels;
+            const values = priorityData.values;
 
             // Create gradient colors based on priority
             const colors = sortedPriorities.map((priority, index) => {
@@ -1013,25 +1112,19 @@
 
         // Update timeline chart
         function updateTimelineChart() {
+            if (!currentAggregations.charts || !currentAggregations.charts.timeline) {
+                console.warn('No timeline chart data available');
+                return;
+            }
+
+            const timelineData = currentAggregations.charts.timeline;
+            const sortedDates = timelineData.dates;
             const timelineCounts = {};
-            const statusTimeline = {};
 
-            filteredData.forEach(item => {
-                if (item.LR_DATE && item.LR_DATE !== 'NaT' && item.LR_DATE !== 'null') {
-                    const date = item.LR_DATE.split(' ')[0]; // Get date part only
-                    const status = item.STATUS;
-
-                    if (!timelineCounts[date]) {
-                        timelineCounts[date] = 0;
-                        statusTimeline[date] = {};
-                    }
-
-                    timelineCounts[date] += item.COUNT;
-                    statusTimeline[date][status] = (statusTimeline[date][status] || 0) + item.COUNT;
-                }
+            // Convert arrays back to objects for compatibility
+            timelineData.dates.forEach((date, index) => {
+                timelineCounts[date] = timelineData.counts[index];
             });
-
-            const sortedDates = Object.keys(timelineCounts).sort();
 
             if (sortedDates.length === 0) {
                 // Show empty state
@@ -1159,15 +1252,13 @@
 
         // Update manufacturer distribution chart
         function updateManufacturerChart() {
-            const manufacturerCounts = {};
-            filteredData.forEach(item => {
-                manufacturerCounts[item.MAN_ID] = (manufacturerCounts[item.MAN_ID] || 0) + item.COUNT;
-            });
+            if (!currentAggregations.charts || !currentAggregations.charts.manufacturer) {
+                console.warn('No manufacturer chart data available');
+                return;
+            }
 
-            // Get top 10 manufacturers
-            const sortedManufacturers = Object.entries(manufacturerCounts)
-                .sort(([,a], [,b]) => b - a)
-                .slice(0, 10);
+            const manufacturerData = currentAggregations.charts.manufacturer;
+            const sortedManufacturers = manufacturerData.labels.map((label, index) => [label, manufacturerData.values[index]]);
 
             const data = [{
                 x: sortedManufacturers.map(([name, count]) => name),
@@ -1229,8 +1320,14 @@
 
         // Update expired vs active chart
         function updateExpiredChart() {
-            const expiredCount = filteredData.filter(item => item.is_expired === true).reduce((sum, item) => sum + item.COUNT, 0);
-            const activeCount = filteredData.filter(item => item.is_expired === false).reduce((sum, item) => sum + item.COUNT, 0);
+            if (!currentAggregations.charts || !currentAggregations.charts.expired) {
+                console.warn('No expired chart data available');
+                return;
+            }
+
+            const expiredData = currentAggregations.charts.expired;
+            const activeCount = expiredData.values[0]; // Active is first
+            const expiredCount = expiredData.values[1]; // Expired is second
 
             const data = [{
                 values: [activeCount, expiredCount],
@@ -1283,25 +1380,55 @@
             Plotly.newPlot('expiredChart', data, layout, config);
         }
 
-        // Update data table
+        // Update data table using aggregated table data
         function updateDataTable() {
             const tableBody = $('#dataTableBody');
             tableBody.empty();
 
-            filteredData.forEach(item => {
+            if (!currentAggregations.table_data || currentAggregations.table_data.length === 0) {
+                tableBody.append('<tr><td colspan="7" class="text-center">No data available</td></tr>');
+                return;
+            }
+
+            const tableData = currentAggregations.table_data;
+
+            // Sort data by COUNT descending
+            const sortedData = [...tableData].sort((a, b) => b.COUNT - a.COUNT);
+
+            sortedData.forEach(item => {
+                const expiredBadge = item.is_expired ?
+                    '<span class="badge bg-warning">Expired</span>' :
+                    '<span class="badge bg-success">Active</span>';
+
+                const statusBadge = getStatusBadge(item.STATUS);
+
                 const row = `
                     <tr>
                         <td>${item.MAN_ID}</td>
                         <td>${item.MOD_ID}</td>
-                        <td>${item.PRTY}</td>
-                        <td>${item.STATUS}</td>
-                        <td>${item.LR_DATE || '-'}</td>
-                        <td>${item.COUNT.toLocaleString()}</td>
-                        <td>${item.is_expired ? 'Yes' : 'No'}</td>
+                        <td><span class="badge bg-info">${item.PRTY}</span></td>
+                        <td>${statusBadge}</td>
+                        <td>${item.LR_DATE || 'N/A'}</td>
+                        <td><strong>${item.COUNT.toLocaleString()}</strong></td>
+                        <td>${expiredBadge}</td>
                     </tr>
                 `;
                 tableBody.append(row);
             });
+        }
+
+        // Get status badge HTML
+        function getStatusBadge(status) {
+            switch(status) {
+                case 'found':
+                    return '<span class="badge bg-success">Found</span>';
+                case 'not found':
+                    return '<span class="badge bg-danger">Not Found</span>';
+                case 'not run':
+                    return '<span class="badge bg-warning">Not Run</span>';
+                default:
+                    return '<span class="badge bg-secondary">' + status + '</span>';
+            }
         }
 
         // Force refresh data from database
@@ -1339,27 +1466,67 @@
             $('#downloadData').on('click', downloadTableData);
         }
 
+
+
         // Clear all filters
         function clearAllFilters() {
             $('.select2').val(null).trigger('change');
-            filteredData = [...rawData];
-            updateStatsCards();
-            updateCharts();
-            updateDataTable();
+            currentFilters = {}; // Reset current filters
+            isFiltered = false;
+
+            // Reset all Select All buttons
+            $('.select-all-btn').each(function() {
+                $(this).text('Select All');
+                $(this).removeClass('btn-outline-secondary').addClass('btn-outline-primary');
+            });
+
+            // Reload original data
+            loadData();
         }
 
-        // Download table data as CSV
-        function downloadTableData() {
-            const csvContent = convertToCSV(filteredData);
-            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            link.setAttribute('href', url);
-            link.setAttribute('download', 'wda_reg_data.csv');
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+        // Download table data using optimized API
+        async function downloadTableData() {
+            try {
+                showLoading(true);
+
+                // Get current filter values
+                const filters = {
+                    man_ids: $('#manIdFilter').val() || [],
+                    mod_ids: $('#modIdFilter').val() || [],
+                    priorities: $('#priorityFilter').val() || [],
+                    statuses: $('#statusFilter').val() || [],
+                    expired_filter: $('#expiredFilter').val() || []
+                };
+
+                const response = await fetch('/api/download-wda-reg-filtered', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(filters)
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `wda_reg_filtered_data_${new Date().toISOString().split('T')[0]}.csv`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(url);
+
+                    showNotification('Data downloaded successfully', 'success');
+                } else {
+                    throw new Error('Failed to download data');
+                }
+            } catch (error) {
+                console.error('Error downloading data:', error);
+                showNotification('Error downloading data: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
         }
 
         // Convert data to CSV format
