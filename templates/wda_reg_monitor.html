@@ -643,6 +643,31 @@
                     </div>
                 </div>
 
+                <!-- Summary Timeline Chart -->
+                <div class="row mt-4">
+                    <div class="col-12 chart-container">
+                        <div class="chart-header">
+                            <h4>Summary Timeline</h4>
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="chart-info">Shows aggregated data from summary table over time</span>
+                                </div>
+                                <button class="download-btn" onclick="downloadChart('summaryTimelineChart')">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="position-relative h-100">
+                            <div id="summaryTimelineChart"></div>
+                            <div class="chart-loading">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Data Table Section -->
                 <div class="row mt-4">
                     <div class="col-12">
@@ -1123,6 +1148,7 @@
             updateWdaFlagChart();
             updateCsChart();
             updateTimelineChart();
+            updateSummaryTimelineChart();
         }
 
         // Update status distribution chart
@@ -1374,9 +1400,119 @@
                 modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d', 'autoScale2d'],
                 displaylogo: false
             };
-
+            
             Plotly.newPlot('timelineChart', traces, layout, config);
         }
+
+        // Update summary timeline chart
+        function updateSummaryTimelineChart() {
+    if (!currentAggregations.charts || !currentAggregations.charts.summary_timeline) {
+        console.warn('No summary timeline chart data available');
+        return;
+    }
+
+    try {
+        const rawData = currentAggregations.charts.summary_timeline;
+        console.log("rawData:", rawData);
+
+        const summaryArray = Object.values(rawData);
+        if (summaryArray.length === 0) {
+            // Show empty state
+            const layout = {
+                height: 350,
+                margin: { t: 30, b: 50, l: 60, r: 30 },
+                annotations: [{
+                    text: 'No summary timeline data available',
+                    xref: 'paper',
+                    yref: 'paper',
+                    x: 0.5,
+                    y: 0.5,
+                    xanchor: 'center',
+                    yanchor: 'middle',
+                    showarrow: false,
+                    font: { size: 16, color: '#7f8c8d' }
+                }],
+                xaxis: { visible: false },
+                yaxis: { visible: false },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)'
+            };
+            Plotly.newPlot('summaryTimelineChart', [], layout, { responsive: true });
+            return;
+        }
+
+        // Extract sorted dates
+        const sortedDates = summaryArray.map(entry => entry.summary_date);
+        const metricKeys = Object.keys(summaryArray[0]).filter(key => key !== "summary_date");
+
+        // Prepare traces for each metric
+        const traces = metricKeys.map(metric => {
+            return {
+                x: sortedDates,
+                y: summaryArray.map(entry => entry[metric]),
+                type: 'scatter',
+                mode: 'lines+markers',
+                name: metric,
+                line: {
+                    width: 2,
+                    shape: 'spline'
+                },
+                marker: {
+                    size: 6,
+                    line: { color: '#fff', width: 1 }
+                },
+                hovertemplate: '<b>%{x}</b><br>' +
+                    `${metric}: %{y:,}<br>` +
+                    '<extra></extra>'
+            };
+        });
+
+        const layout = {
+            height: 350,
+            margin: { t: 30, b: 80, l: 60, r: 30 },
+            xaxis: {
+                title: {
+                    text: 'Date',
+                    font: { size: 14, color: '#2c3e50' }
+                },
+                tickangle: -45,
+                tickfont: { size: 10 },
+                type: 'category'
+            },
+            yaxis: {
+                title: {
+                    text: 'Count',
+                    font: { size: 14, color: '#2c3e50' }
+                },
+                tickformat: ',',
+                tickfont: { size: 12 }
+            },
+            font: {
+                family: 'Arial, sans-serif'
+            },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            legend: {
+                orientation: 'h',
+                x: 0.5,
+                xanchor: 'center',
+                y: -0.2
+            },
+            hovermode: 'x unified'
+        };
+
+        const config = {
+            responsive: true,
+            displayModeBar: true,
+            modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d', 'autoScale2d'],
+            displaylogo: false
+        };
+
+        Plotly.newPlot('summaryTimelineChart', traces, layout, config);
+    } catch (error) {
+        console.error("Failed to render summary timeline chart:", error);
+    }
+}
 
         // Update manufacturer distribution chart
         function updateManufacturerChart() {
@@ -1645,6 +1781,64 @@
             };
 
             Plotly.newPlot('expiredChart', data, layout, config);
+        }
+
+        // Download chart data as CSV
+        function downloadChart(chartId) {
+            showLoading(true);
+            let endpoint = '';
+            
+            // Determine which endpoint to use based on chart ID
+            if (chartId === 'summaryTimelineChart') {
+                endpoint = '/api/download-summary-timeline-data';
+            } else {
+                console.error('Unknown chart ID for download:', chartId);
+                showNotification('Error: Unknown chart type for download', 'error');
+                showLoading(false);
+                return;
+            }
+            
+            // Send request to download data
+            fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(currentFilters)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                // Create a temporary link to download the file
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                let filename = '';
+                
+                if (chartId === 'summaryTimelineChart') {
+                    filename = `summary_timeline_data_${timestamp}.csv`;
+                }
+                
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                showNotification('Download started successfully', 'success');
+            })
+            .catch(error => {
+                console.error('Error downloading chart data:', error);
+                showNotification('Error downloading data: ' + error.message, 'error');
+            })
+            .finally(() => {
+                showLoading(false);
+            });
         }
 
         // Update data table using aggregated table data

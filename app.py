@@ -25,7 +25,8 @@ import hashlib
 print("import hashlib")
 from Parts_Upload import main_upload_parts, main_delete_file
 print("from Parts_Upload import main_upload_parts, main_delete_file")
-from check_status import Get_status, Download_results, get_status_statistics, daily_check_all, get_wda_reg_aggregated_data, download_wda_reg_system_data
+from check_status import Get_status, Download_results, get_status_statistics, daily_check_all, get_wda_reg_aggregated_data, download_wda_reg_system_data,create_db_engine
+
 print("from check_status import Get_status, Download_results, get_status_statistics, daily_check_all")
 from config import Config
 print("from config import Config")
@@ -1343,7 +1344,7 @@ def update_stop_date():
 		file_name = request.json.get('file_name')
 		stop_date = request.json.get('stop_date')
 
-		from check_status import create_db_engine
+		
 		engine = create_db_engine()
 
 		with engine.begin() as connection:
@@ -1508,6 +1509,10 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
             'colors': ['#27ae60', '#e67e22']
         }
 
+        # Get summary table data for the summary timeline chart
+        summary_timeline_data = get_summary()
+        summary_timeline_data = summary_timeline_data.to_dict('records')
+        print("summary_timeline_data: ",summary_timeline_data)
         # Timeline data (by LR_DATE) - initially show past year
         timeline_data = {'dates': [], 'counts': [], 'date_range': {'min_date': '', 'max_date': ''}}
         if 'LR_DATE' in df.columns:
@@ -1596,35 +1601,37 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
                 'not_found_parts': not_found_parts,
                 'not_run_parts': not_run_parts,
                 'expired_parts': expired_parts,
-				'unique_modules': unique_modules,
-				'unique_manufacturers': unique_manufacturers,
+                'unique_modules': unique_modules,
+                'unique_manufacturers': unique_manufacturers,
                 'found_percentage': found_percentage,
                 'not_found_percentage': not_found_percentage,
                 'not_run_percentage': not_run_percentage,
-                'expired_percentage': expired_percentage,
-                'unique_manufacturers': len(df['MAN_NAME'].unique())
+                'expired_percentage': expired_percentage
             },
             'charts': {
                 'status': status_chart_data,
                 'priority': priority_chart_data,
                 'manufacturer': manufacturer_chart_data,
+                'wda_flag': wda_flag_chart_data,
+                'cs': cs_chart_data,
                 'expired': expired_chart_data,
                 'timeline': timeline_data,
                 'wda_flag': wda_flag_chart_data,
-                'cs': cs_chart_data
+                'cs': cs_chart_data,
+                'summary_timeline': summary_timeline_data
             },
             'filter_options': filter_options,
             'table_data': table_data
         }
 
     except Exception as e:
-        app.logger.error(f'Error calculating WDA_Reg aggregations: {traceback.format_exc()}')
+        app.logger.error(f"Error calculating WDA_Reg aggregations: {str(e)}")
+        app.logger.error(traceback.format_exc())
         return {
             'stats': {},
             'charts': {},
             'filter_options': {}
         }
-
 @app.route('/api/wda-reg-data', methods=['GET'])
 @login_required
 @permission_required('view')
@@ -1652,7 +1659,7 @@ def get_wda_reg_data():
 
         # Pre-calculate aggregated data for visualizations
         aggregated_data = calculate_wda_reg_aggregations(df)
-
+        print("aggregated_data: ",aggregated_data)
         app.logger.info(f'Successfully served WDA_Reg aggregations from cache ({len(df)} records processed)')
 
         return jsonify({
@@ -1883,9 +1890,56 @@ def download_wda_reg_raw_data():
         log_user_activity(username, 'WDA_REG_RAW_DOWNLOAD_ERROR', f'Error downloading raw data: {str(e)}')
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+@app.route('/api/download-summary-timeline-data', methods=['POST'])
+@login_required
+@permission_required('view')
+def download_summary_timeline_data():
+    """API endpoint to download summary timeline data in CSV format"""
+    username = session['username']
+    try:
+        app.logger.info(f'User {username} downloading summary timeline data')
+        log_user_activity(username, 'SUMMARY_TIMELINE_DOWNLOAD', 'Downloaded summary timeline data')
+
+        # Get filters from request
+        filters = request.json or {}
+
+        # Get the aggregated data with filters
+        df = get_filtered_wda_reg_data(filters)
+        aggregations = calculate_wda_reg_aggregations(df)
+        
+        # Extract summary timeline data
+        summary_timeline = aggregations['charts']['summary_timeline']
+        
+        # Create DataFrame from summary timeline data
+        summary_df = pd.DataFrame({
+            'Date': summary_timeline['dates'],
+            'Count': summary_timeline['counts']
+        })
+        
+        # Create temporary file for download
+        system_monitor_dir = os.path.join(os.getcwd(), "system_Monitor")
+        os.makedirs(system_monitor_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        temp_filename = f'summary_timeline_data_{timestamp}.csv'
+        temp_filepath = os.path.join(system_monitor_dir, temp_filename)
+
+        # Save summary timeline data
+        summary_df.to_csv(temp_filepath, index=False)
+
+        app.logger.info(f'Successfully created summary timeline download file: {temp_filepath} with {len(summary_df)} records')
+
+        return send_file(temp_filepath, as_attachment=True, download_name=temp_filename)
+
+    except Exception as e:
+        app.logger.error(f'Error downloading summary timeline data: {str(e)}')
+        log_user_activity(username, 'SUMMARY_TIMELINE_DOWNLOAD_ERROR', f'Error downloading summary timeline data: {str(e)}')
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 def query_wda_reg_raw_data_with_filters(filters):
     """Query database directly for raw WDA_Reg data with filters applied"""
-    from check_status import create_db_engine
+    
 
     engine = create_db_engine()
 
@@ -2457,14 +2511,42 @@ def run_daily_summary():
         GROUP BY prty
     );
     '''
-    from check_status import create_db_engine
+    
     # Replace with your DB connection setup
     engine = create_db_engine()
     with engine.connect() as conn:
         conn.execute(text(query))
         conn.commit()
     engine.dispose()
+    engine = create_db_engine()
+    with engine.connect() as conn:
+        result = conn.execute(text("select * from summary_table"))
+        df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    engine.dispose()
+    path = os.path.join(Config.result_path,'summary.csv')
+    df.to_csv(path, index=False)
 
+
+def get_summary():
+    path = os.path.join(Config.result_path,'summary.csv')
+    if os.path.exists(path) and datetime.fromtimestamp(os.path.getmtime(path)).date() == datetime.now().date():
+        df = pd.read_csv(path)
+        print("returning from cache")
+        return df
+    else:
+        print("downloading from database")
+        return download_summary_from_database()
+
+def download_summary_from_database():
+    
+    engine = create_db_engine()
+    with engine.connect() as conn:
+        result = conn.execute(text("select * from summary_table"))
+        df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    engine.dispose()
+    path = os.path.join(Config.result_path,'summary.csv')
+    df.to_csv(path, index=False)
+    return df
 
 class TaskConfig:
     SCHEDULER_API_ENABLED = True
