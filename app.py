@@ -1833,6 +1833,7 @@ def upload_to_monitor():
         new_filename = f"{file_name}@{date_str}.txt"
         file_path = os.path.join(Config.WORK_FOLDER, new_filename)
         file = df[['PART_NUMBER','MAN_NAME','MODULE_NAME']].copy()
+        upload_file_to_amazon(file,new_filename)
         try:
             file.to_csv(file_path, index=False, sep='\t')
             app.logger.info(f'User {username} uploaded file: {new_filename}')
@@ -1946,45 +1947,35 @@ def query_wda_reg_raw_data_with_filters(filters):
     try:
         # Build the base query with filters applied in SQL
         base_query = """
-            with main_data as(
-            SELECT
-                man_id,
-                mod_id,
-                Prty,
-                cs,
-                LRD2,
-                v_notfound_dat2,
-                CASE
-                    WHEN v_notfound_dat2 > LRD2 THEN 'not found'
-                    WHEN LRD2 > v_notfound_dat2 THEN 'found'
-                    WHEN LRD2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY')
-                         AND v_notfound_dat2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') THEN 'not run'
-                END AS status,
-
-              CASE
-                  WHEN v_notfound_dat2 > LRD2 THEN v_notfound_dat2
-                  when LRD2 > v_notfound_dat2 then LRD2
-                  ELSE Null
-              END AS LR_date,
-              count,
-              pn
-
-            FROM (
+            WITH main_data AS (
                 SELECT
+                    pn,
                     man_id,
                     mod_id,
                     Prty,
                     cs,
-                    pn,
                     NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS v_notfound_dat2,
                     NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS LRD2,
-                    COUNT(*) AS count
+                    CASE
+                        WHEN NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) > NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
+                            THEN 'not found'
+                        WHEN NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) > NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
+                            THEN 'found'
+                        WHEN NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) = TO_DATE('01-JAN-1970', 'DD-MON-YYYY')
+                            AND NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) = TO_DATE('01-JAN-1970', 'DD-MON-YYYY')
+                            THEN 'not run'
+                    END AS status,
+                    CASE
+                        WHEN NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) > NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
+                            THEN NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
+                        WHEN NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) > NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
+                            THEN NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
+                        ELSE NULL
+                    END AS LR_date
                 FROM updatesys.TBL_Prty_pns_@NEW3_N
-                GROUP BY man_id, mod_id, Prty, cs, pn,
-                         NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')),
-                         NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
-            ))
-            select
+            )
+            SELECT
+                x.pn AS part_number,
                 z.man_name,
                 y.module_name,
                 y.wda_flag,
@@ -1993,12 +1984,12 @@ def query_wda_reg_raw_data_with_filters(filters):
                 x.LRD2,
                 x.v_notfound_dat2,
                 x.status,
-                x.LR_date,
-                x.count,
-                x.pn as part_number
-            from main_data x
-            join updatesys.tbl_man_modules@new3_n y on x.man_id = y.man_id and x.mod_id = y.module_id
-            join cm.xlp_se_manufacturer@new3_n z on y.man_id = z.man_id
+                x.LR_date
+            FROM main_data x
+            JOIN updatesys.tbl_man_modules@new3_n y
+                ON x.man_id = y.man_id AND x.mod_id = y.module_id
+            JOIN cm.xlp_se_manufacturer@new3_n z
+                ON y.man_id = z.man_id;
         """
 
         # Build WHERE clause based on filters
