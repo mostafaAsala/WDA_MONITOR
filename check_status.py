@@ -847,56 +847,88 @@ def download_wda_reg_system_data():
     try:
         # Use the working query from the original function
         aggregation_query = text("""
-            with main_data as(
-            SELECT 
-                man_id,
-                mod_id,
-                Prty,
-                cs,
-                LRD2,
-                v_notfound_dat2,  
-                CASE 
-                    WHEN v_notfound_dat2 > LRD2 THEN 'not found'
-                    WHEN LRD2 > v_notfound_dat2 THEN 'found'
-                    WHEN LRD2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') 
-                        AND v_notfound_dat2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') THEN 'not run'
-                END AS status,
-
-                
-            CASE 
-                WHEN v_notfound_dat2 > LRD2 THEN v_notfound_dat2
-                when LRD2 > v_notfound_dat2 then LRD2
-                ELSE Null
-            END AS LR_date,
-            count 
-
-            FROM (
+            with 
+                LC_outdated as(
                 SELECT 
-                    man_id,
-                    mod_id,
-                    Prty,
-                    cs,
-                    NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS v_notfound_dat2,
-                    NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS LRD2,
-                    COUNT(*) AS count
-                FROM updatesys.TBL_Prty_pns_@NEW3_N
-                GROUP BY man_id, mod_id, Prty, cs, 
-                        NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')),
-                        NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
-            ))
-            select 
-                z.man_name,
-                y.module_name,
-                y.wda_flag,
-                x.Prty,
-                x.cs,
-                x.LRD2,
-                x.v_notfound_dat2, 
-                x.status,
-                x.LR_date,
-                x.count
-            from main_data x join updatesys.tbl_man_modules@new3_n y on x.man_id = y.man_id and x.mod_id = y.module_id
-            join cm.xlp_se_manufacturer@new3_n z on y.man_id = z.man_id 
+                    u.COM_PARTNUM AS PN, 
+                    u.MAN_ID AS MAN_id
+                FROM cm.xlp_se_component u 
+                LEFT JOIN cm.tbl_lc_hstry bb ON u.COM_ID = bb.COM_ID 
+                LEFT JOIN cm.tbl_lc_lookup_db c ON bb.lc_lookup_id = c.lc_lookup_id 
+                LEFT JOIN cm.tbl_lc_src_reason d ON c.sorce_reason_id = d.sorce_reason_id  
+                LEFT JOIN cm.tbl_lc_src_typ e ON d.lc_src_id = e.lc_src_id    
+                WHERE
+                    e.lc_src_name IN ('Supplier Site_Auto', 'Supplier Site_Auto_S', 'WDA', 'WDA_M', 'WDA_S', 'WDA_A', 'WDA_A_S')
+                    AND bb.LATEST = 1
+                    AND u.NAN_PARTNUM NOT LIKE '%)$.@(%'
+                    AND (NOT (( CAST(cm.xlp_releasedate_function_d(bb.last_checked_date) AS DATE) >= ( SYSDATE - 90 ))
+                    OR ( c.se_lc = 'Obsolete' )
+                    OR ( c.se_lc = 'LTB' AND bb.se_lc_date IS NOT NULL )) 
+                    OR bb.last_checked_date IS NULL)
+                )
+                ,main_data as(
+                    SELECT 
+                        man_id,
+                        mod_id,
+                        Prty,
+                        cs,
+                        LRD2,
+                        v_notfound_dat2,  
+                        CASE 
+                            WHEN v_notfound_dat2 > LRD2 THEN 'not found'
+                            WHEN LRD2 > v_notfound_dat2 THEN 'found'
+                            WHEN LRD2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') 
+                                AND v_notfound_dat2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') THEN 'not run'
+                        END AS status,
+
+                        
+                        CASE 
+                            WHEN v_notfound_dat2 > LRD2 THEN v_notfound_dat2
+                            when LRD2 > v_notfound_dat2 then LRD2
+                            ELSE Null
+                        END AS LR_date,
+                        lc_outdated,
+                        count 
+
+                    FROM (
+                        SELECT 
+                            a.man_id,
+                            a.mod_id,
+                            a.Prty,
+                            a.cs,
+                            NVL(TO_DATE(a.v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS v_notfound_dat2,
+                            NVL(cm.XLP_RELEASEDATE_FUNCTION_D(a.LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS LRD2,
+                            case 
+                                when b.pn is null then 0 else 1
+                            end as lc_outdated,
+                            COUNT(*) AS count
+                        FROM updatesys.TBL_Prty_pns_@NEW3_N a left join LC_outdated b on a.man_id = b.man_id and a.pn = b.pn
+                        
+                        GROUP BY a.man_id, a.mod_id, a.Prty, cs, 
+                            case 
+                                when b.pn is null then 0 else 1
+                            end,
+                            NVL(TO_DATE(a.v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')),
+                            NVL(cm.XLP_RELEASEDATE_FUNCTION_D(a.LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
+                    )
+                    )
+
+                select 
+                    z.man_name,
+                    y.module_name,
+                    y.wda_flag,
+                    x.Prty,
+                    x.cs,
+                    x.LRD2,
+                    x.v_notfound_dat2, 
+                    x.status,
+                    x.LR_date,
+                    x.lc_outdated,
+                    
+                    x.count
+                from main_data x join updatesys.tbl_man_modules@new3_n y on x.man_id = y.man_id and x.mod_id = y.module_id
+                join cm.xlp_se_manufacturer@new3_n z on y.man_id = z.man_id 
+
         """)
 
         with engine.connect() as connection:

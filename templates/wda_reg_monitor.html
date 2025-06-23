@@ -568,6 +568,7 @@
                     </div>
 
                     <!-- WDA Flag Chart -->
+                    <!--
                     <div class="col-md-6 chart-container">
                         <div class="chart-header">
                             <h4>WDA Flag Distribution</h4>
@@ -577,6 +578,25 @@
                         </div>
                         <div class="position-relative h-100">
                             <div id="wdaFlagChart"></div>
+                            <div class="chart-loading">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    -->
+
+                    <!-- LC Outdated Distribution Chart -->
+                    <div class="col-md-6 chart-container">
+                        <div class="chart-header">
+                            <h4>LC Outdated Distribution</h4>
+                            <button class="download-btn" onclick="downloadChart('lcOutdatedChart')">
+                                <i class="fas fa-download"></i>
+                            </button>
+                        </div>
+                        <div class="position-relative h-100">
+                            <div id="lcOutdatedChart"></div>
                             <div class="chart-loading">
                                 <div class="spinner-border text-primary" role="status">
                                     <span class="visually-hidden">Loading...</span>
@@ -798,6 +818,7 @@
             const priorities = filterOptions.priorities || [];
             const statuses = filterOptions.statuses || [];
             const wdaFlags = filterOptions.wda_flags || [];
+            const lcOutdatedOptions = filterOptions.lc_outdated_options || [];
             const csLabels = filterOptions.cs_labels || [];
 
             // Create filter HTML with Select All buttons
@@ -855,6 +876,17 @@
                     </div>
                     <select class="form-select select2" id="wdaFlagFilter" multiple>
                         ${wdaFlags.map(flag => `<option value="${flag}">${flag === 'Y' ? 'Yes' : 'No'}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="filter-wrapper">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0">LC Outdated</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary select-all-btn" data-target="lcOutdatedFilter">
+                            Select All
+                        </button>
+                    </div>
+                    <select class="form-select select2" id="lcOutdatedFilter" multiple>
+                        ${lcOutdatedOptions.map(option => `<option value="${option}">${option === 1 ? 'Outdated' : 'Up to Date'}</option>`).join('')}
                     </select>
                 </div>
                 <div class="filter-wrapper">
@@ -939,6 +971,7 @@
             const priorityFilter = $('#priorityFilter').val();
             const statusFilter = $('#statusFilter').val();
             const wdaFlagFilter = $('#wdaFlagFilter').val();
+            const lcOutdatedFilter = $('#lcOutdatedFilter').val();
             const expiredFilter = $('#expiredFilter').val();
             const csFilter = $('#csFilter').val();
 
@@ -949,6 +982,7 @@
                 priorities: priorityFilter || [],
                 statuses: statusFilter || [],
                 wda_flags: wdaFlagFilter || [],
+                lc_outdated_filter: lcOutdatedFilter || [],
                 expired_filter: expiredFilter || [],
                 cs_labels: csFilter || [],
                 ...(currentFilters.date_start && { date_start: currentFilters.date_start }),
@@ -1020,12 +1054,14 @@
             const notFoundParts = stats.not_found_parts;
             const notRunParts = stats.not_run_parts;
             const expiredParts = stats.expired_parts;
+            const lcOutdatedParts = stats.lc_outdated_parts || 0;
             const uniqueModules = stats.unique_modules;
             const uniqueManufacturers = stats.unique_manufacturers;
             const foundPercentage = stats.found_percentage;
             const notFoundPercentage = stats.not_found_percentage;
             const notRunPercentage = stats.not_run_percentage;
             const expiredPercentage = stats.expired_percentage;
+            const lcOutdatedPercentage = stats.lc_outdated_percentage || 0;
 
             const statsHTML = `
                 <div class="col-md-2">
@@ -1099,7 +1135,21 @@
                     </div>
                 </div>
                 <div class="col-md-2">
-                    <div class="card stat-card animate__animated animate__fadeInUp" style="animation-delay: 0.5s; background: linear-gradient(45deg, #667eea, #764ba2);">
+                    <div class="card stat-card lc-outdated-parts animate__animated animate__fadeInUp" style="animation-delay: 0.5s; background: linear-gradient(45deg, #e74c3c, #c0392b);">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="card-subtitle mb-2">LC Outdated</h6>
+                                    <h2 class="card-title mb-0 counter" data-target="${lcOutdatedParts}">${lcOutdatedParts.toLocaleString()}</h2>
+                                    <small class="opacity-75">${lcOutdatedPercentage}% of total</small>
+                                </div>
+                                <i class="fas fa-clock stat-icon"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="card stat-card animate__animated animate__fadeInUp" style="animation-delay: 0.6s; background: linear-gradient(45deg, #667eea, #764ba2);">
                         <div class="card-body">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
@@ -1145,7 +1195,8 @@
             updateStatusChart();
             updatePriorityChart();
             updateManufacturerChart();
-            updateWdaFlagChart();
+            //updateWdaFlagChart();
+            updateLcOutdatedChart();
             updateCsChart();
             updateTimelineChart();
             updateSummaryTimelineChart();
@@ -1583,7 +1634,7 @@
         }
 
         // Update WDA flag distribution chart
-        function updateWdaFlagChart() {
+        /*function updateWdaFlagChart() {
             if (!currentAggregations.charts || !currentAggregations.charts.wda_flag) {
                 console.warn('No WDA flag chart data available');
                 return;
@@ -1647,6 +1698,76 @@
             };
 
             Plotly.newPlot('wdaFlagChart', data, layout, config);
+        }
+        */
+        
+        // Update LC Outdated distribution chart
+        function updateLcOutdatedChart() {
+            if (!currentAggregations.charts || !currentAggregations.charts.lc_outdated) {
+                console.warn('No LC Outdated chart data available');
+                return;
+            }
+
+            const lcOutdatedData = currentAggregations.charts.lc_outdated;
+            const labels = lcOutdatedData.labels;
+            const values = lcOutdatedData.values;
+            const colors = lcOutdatedData.colors ?
+                labels.map((label, index) => lcOutdatedData.colors[index] || '#95a5a6') :
+                ['#28a745', '#dc3545']; // Default colors: green for up to date, red for outdated
+
+            const data = [{
+                values: values,
+                labels: labels,
+                type: 'pie',
+                hole: 0.4,
+                textinfo: 'label+percent+value',
+                textposition: 'auto',
+                hovertemplate: '<b>%{label}</b><br>' +
+                              'Count: %{value:,}<br>' +
+                              'Percentage: %{percent}<br>' +
+                              '<extra></extra>',
+                marker: {
+                    colors: colors,
+                    line: {
+                        color: '#ffffff',
+                        width: 2
+                    }
+                },
+                textfont: {
+                    size: 12,
+                    color: '#ffffff'
+                }
+            }];
+
+            const layout = {
+                showlegend: true,
+                legend: {
+                    orientation: 'v',
+                    x: 1,
+                    y: 0.5,
+                    font: {
+                        size: 12,
+                        color: '#333'
+                    }
+                },
+                margin: { t: 20, b: 20, l: 20, r: 80 },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                font: {
+                    family: 'Arial, sans-serif',
+                    size: 12,
+                    color: '#333'
+                }
+            };
+
+            const config = {
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d', 'autoScale2d'],
+                displaylogo: false
+            };
+
+            Plotly.newPlot('lcOutdatedChart', data, layout, config);
         }
 
         // Update CS distribution chart
@@ -2026,6 +2147,7 @@
                     priorities: $('#priorityFilter').val() || [],
                     statuses: $('#statusFilter').val() || [],
                     wda_flags: $('#wdaFlagFilter').val() || [],
+                    lc_outdated_filter: $('#lcOutdatedFilter').val() || [],
                     expired_filter: $('#expiredFilter').val() || [],
                     cs_labels: $('#csFilter').val() || [],
                     ...(currentFilters.date_start && { date_start: currentFilters.date_start }),
@@ -2119,6 +2241,7 @@
                     priorities: $('#priorityFilter').val() || [],
                     statuses: $('#statusFilter').val() || [],
                     wda_flags: $('#wdaFlagFilter').val() || [],
+                    lc_outdated_filter: $('#lcOutdatedFilter').val() || [],
                     expired_filter: $('#expiredFilter').val() || [],
                     cs_labels: $('#csFilter').val() || [],
                     ...(currentFilters.date_start && { date_start: currentFilters.date_start }),
@@ -2196,6 +2319,7 @@
                     priorities: $('#priorityFilter').val() || [],
                     statuses: $('#statusFilter').val() || [],
                     wda_flags: $('#wdaFlagFilter').val() || [],
+                    lc_outdated_filter: $('#lcOutdatedFilter').val() || [],
                     expired_filter: $('#expiredFilter').val() || [],
                     cs_labels: $('#csFilter').val() || [],
                     ...(currentFilters.date_start && { date_start: currentFilters.date_start }),

@@ -1431,6 +1431,7 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
         not_run_parts = int(df[df['STATUS'] == 'not run']['COUNT'].sum())
         expired_parts = int(df[df['is_expired'] == True]['COUNT'].sum())
         expired_parts = int(df[df['PRTY'].str.startswith('P')]['COUNT'].sum())
+        lc_outdated_parts = int(df[df['LC_OUTDATED'] == 1]['COUNT'].sum())
         unique_modules = int(df['MODULE_NAME'].nunique())
         unique_manufacturers = int(df['MAN_NAME'].nunique())
 
@@ -1439,6 +1440,7 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
         not_found_percentage = round((not_found_parts / total_parts) * 100, 1) if total_parts > 0 else 0
         not_run_percentage = round((not_run_parts / total_parts) * 100, 1) if total_parts > 0 else 0
         expired_percentage = round((expired_parts / total_parts) * 100, 1) if total_parts > 0 else 0
+        lc_outdated_percentage = round((lc_outdated_parts / total_parts) * 100, 1) if total_parts > 0 else 0
 
         # Status distribution for charts
         status_counts = df.groupby('STATUS')['COUNT'].sum().to_dict()
@@ -1474,6 +1476,17 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
             'colors': {
                 'Y': '#28a745',  # Green for Yes
                 'N': '#dc3545'   # Red for No
+            }
+        }
+
+        # LC Outdated distribution
+        lc_outdated_counts = df.groupby('LC_OUTDATED')['COUNT'].sum().to_dict()
+        lc_outdated_chart_data = {
+            'labels': ['Up to Date', 'Outdated'],
+            'values': [int(lc_outdated_counts.get(0, 0)), int(lc_outdated_counts.get(1, 0))],
+            'colors': {
+                0: '#28a745',  # Green for Up to Date
+                1: '#dc3545'   # Red for Outdated
             }
         }
 
@@ -1556,6 +1569,7 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
             'priorities': sorted(df['PRTY'].unique().tolist()),
             'statuses': sorted(df['STATUS'].unique().tolist()),
             'wda_flags': sorted(df['WDA_FLAG'].unique().tolist()),
+            'lc_outdated_options': sorted(df['LC_OUTDATED'].unique().tolist()),
             'cs_labels': sorted(list(cs_labels)),
             'expired_options': ['true', 'false']
         }
@@ -1601,23 +1615,24 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
                 'not_found_parts': not_found_parts,
                 'not_run_parts': not_run_parts,
                 'expired_parts': expired_parts,
+                'lc_outdated_parts': lc_outdated_parts,
                 'unique_modules': unique_modules,
                 'unique_manufacturers': unique_manufacturers,
                 'found_percentage': found_percentage,
                 'not_found_percentage': not_found_percentage,
                 'not_run_percentage': not_run_percentage,
-                'expired_percentage': expired_percentage
+                'expired_percentage': expired_percentage,
+                'lc_outdated_percentage': lc_outdated_percentage
             },
             'charts': {
                 'status': status_chart_data,
                 'priority': priority_chart_data,
                 'manufacturer': manufacturer_chart_data,
                 'wda_flag': wda_flag_chart_data,
+                'lc_outdated': lc_outdated_chart_data,
                 'cs': cs_chart_data,
                 'expired': expired_chart_data,
                 'timeline': timeline_data,
-                'wda_flag': wda_flag_chart_data,
-                'cs': cs_chart_data,
                 'summary_timeline': summary_timeline_data
             },
             'filter_options': filter_options,
@@ -1732,6 +1747,7 @@ def get_wda_reg_filtered_aggregations():
         df['MODULE_NAME'] = df['MODULE_NAME'].astype(str)
         df['MAN_NAME'] = df['MAN_NAME'].astype(str)
         df['WDA_FLAG'] = df['WDA_FLAG'].astype(int)
+        df['LC_OUTDATED'] = df['LC_OUTDATED'].astype(int)
 
 
         # Apply filters from request
@@ -1948,49 +1964,78 @@ def query_wda_reg_raw_data_with_filters(filters):
     try:
         # Build the base query with filters applied in SQL
         base_query = """
-            WITH main_data AS (
-                SELECT
-                    pn,
+            with 
+                LC_outdated as(
+                SELECT 
+                    u.COM_PARTNUM AS PN, 
+                    u.MAN_ID AS MAN_id
+                FROM cm.xlp_se_component u 
+                LEFT JOIN cm.tbl_lc_hstry bb ON u.COM_ID = bb.COM_ID 
+                LEFT JOIN cm.tbl_lc_lookup_db c ON bb.lc_lookup_id = c.lc_lookup_id 
+                LEFT JOIN cm.tbl_lc_src_reason d ON c.sorce_reason_id = d.sorce_reason_id  
+                LEFT JOIN cm.tbl_lc_src_typ e ON d.lc_src_id = e.lc_src_id    
+                WHERE
+                    e.lc_src_name IN ('Supplier Site_Auto', 'Supplier Site_Auto_S', 'WDA', 'WDA_M', 'WDA_S', 'WDA_A', 'WDA_A_S')
+                    AND bb.LATEST = 1
+                    AND u.NAN_PARTNUM NOT LIKE '%)$.@(%'
+                    AND (NOT (( CAST(cm.xlp_releasedate_function_d(bb.last_checked_date) AS DATE) >= ( SYSDATE - 90 ))
+                    OR ( c.se_lc = 'Obsolete' )
+                    OR ( c.se_lc = 'LTB' AND bb.se_lc_date IS NOT NULL )) 
+                    OR bb.last_checked_date IS NULL)
+                )
+                ,main_data as(
+                SELECT 
                     man_id,
                     mod_id,
                     Prty,
                     cs,
-                    NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS v_notfound_dat2,
-                    NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS LRD2,
-                    CASE
-                        WHEN NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) > NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
-                            THEN 'not found'
-                        WHEN NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) > NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
-                            THEN 'found'
-                        WHEN NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) = TO_DATE('01-JAN-1970', 'DD-MON-YYYY')
-                            AND NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) = TO_DATE('01-JAN-1970', 'DD-MON-YYYY')
-                            THEN 'not run'
-                    END AS status,
-                    CASE
-                        WHEN NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) > NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
-                            THEN NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
-                        WHEN NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) > NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
-                            THEN NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
-                        ELSE NULL
-                    END AS LR_date
-                FROM updatesys.TBL_Prty_pns_@NEW3_N
-            )
-            SELECT
-                x.pn AS part_number,
-                z.man_name,
-                y.module_name,
-                y.wda_flag,
-                x.Prty,
-                x.cs,
-                x.LRD2,
-                x.v_notfound_dat2,
-                x.status,
-                x.LR_date
-            FROM main_data x
-            JOIN updatesys.tbl_man_modules@new3_n y
-                ON x.man_id = y.man_id AND x.mod_id = y.module_id
-            JOIN cm.xlp_se_manufacturer@new3_n z
-                ON y.man_id = z.man_id
+                    LRD2,
+                    v_notfound_dat2,  
+                    CASE 
+                        WHEN v_notfound_dat2 > LRD2 THEN 'not found'
+                        WHEN LRD2 > v_notfound_dat2 THEN 'found'
+                        WHEN LRD2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') 
+                            AND v_notfound_dat2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') THEN 'not run'
+                    END AS status,    
+                    CASE 
+                        WHEN v_notfound_dat2 > LRD2 THEN v_notfound_dat2
+                        when LRD2 > v_notfound_dat2 then LRD2
+                        ELSE Null
+                    END AS LR_date,
+                    lc_outdated
+
+                FROM (
+                    SELECT 
+                        a.man_id,
+                        a.mod_id,
+                        a.Prty,
+                        a.cs,
+                        NVL(TO_DATE(a.v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS v_notfound_dat2,
+                        NVL(cm.XLP_RELEASEDATE_FUNCTION_D(a.LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS LRD2,
+                        case 
+                            when b.pn is null then 0 else 1
+                        end as lc_outdated
+                    FROM updatesys.TBL_Prty_pns_@NEW3_N a left join LC_outdated b on a.man_id = b.man_id and a.pn = b.pn
+                    
+
+                )
+                )
+
+                select 
+                    z.man_name,
+                    y.module_name,
+                    y.wda_flag,
+                    x.Prty,
+                    x.cs,
+                    x.LRD2,
+                    x.v_notfound_dat2, 
+                    x.status,
+                    x.LR_date,
+                    x.lc_outdated
+                    
+                from main_data x join updatesys.tbl_man_modules@new3_n y on x.man_id = y.man_id and x.mod_id = y.module_id
+                join cm.xlp_se_manufacturer@new3_n z on y.man_id = z.man_id 
+
         """
 
         # Build WHERE clause based on filters
@@ -2026,6 +2071,12 @@ def query_wda_reg_raw_data_with_filters(filters):
             where_conditions.append(f"y.wda_flag IN ({placeholders})")
             for i, wda_flag in enumerate(filters['wda_flags']):
                 query_params[f'wda_flag_{i}'] = wda_flag
+
+        if filters.get('lc_outdated_filter') and len(filters['lc_outdated_filter']) > 0:
+            placeholders = ','.join([f':lc_outdated_{i}' for i in range(len(filters['lc_outdated_filter']))])
+            where_conditions.append(f"x.lc_outdated IN ({placeholders})")
+            for i, lc_outdated in enumerate(filters['lc_outdated_filter']):
+                query_params[f'lc_outdated_{i}'] = lc_outdated
 
         # Add date filters if provided
         if filters.get('date_start'):
@@ -2101,6 +2152,9 @@ def apply_wda_reg_filters(df, filters):
 
     if filters.get('wda_flags'):
         filtered_df = filtered_df[filtered_df['WDA_FLAG'].isin(filters['wda_flags'])]
+    print(filters['lc_outdated_filter'])
+    if filters.get('lc_outdated_filter'):
+        filtered_df = filtered_df[filtered_df['LC_OUTDATED'].isin([int(x) for x in filters['lc_outdated_filter']])]
 
     if filters.get('expired_filter'):
         if 'true' in filters['expired_filter'] and 'false' not in filters['expired_filter']:
@@ -2612,7 +2666,7 @@ def upload_filtered_to_amazon():
 
 
 if __name__ == '__main__':
-	app.run(host='0.0.0.0', port=5000, threaded=True,debug=True)
+	app.run(host='0.0.0.0', port=5022, threaded=True,debug=True)
 
 
 
