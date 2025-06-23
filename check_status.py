@@ -848,62 +848,62 @@ def download_wda_reg_system_data():
         # Use the working query from the original function
         aggregation_query = text("""
             with main_data as(
-SELECT 
-    man_id,
-    mod_id,
-    Prty,
-    cs,
-    LRD2,
-    v_notfound_dat2,  
-    CASE 
-        WHEN v_notfound_dat2 > LRD2 THEN 'not found'
-        WHEN LRD2 > v_notfound_dat2 THEN 'found'
-        WHEN LRD2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') 
-             AND v_notfound_dat2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') THEN 'not run'
-    END AS status,
+            SELECT 
+                man_id,
+                mod_id,
+                Prty,
+                cs,
+                LRD2,
+                v_notfound_dat2,  
+                CASE 
+                    WHEN v_notfound_dat2 > LRD2 THEN 'not found'
+                    WHEN LRD2 > v_notfound_dat2 THEN 'found'
+                    WHEN LRD2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') 
+                        AND v_notfound_dat2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') THEN 'not run'
+                END AS status,
 
-    
-  CASE 
-      WHEN v_notfound_dat2 > LRD2 THEN v_notfound_dat2
-      when LRD2 > v_notfound_dat2 then LRD2
-      ELSE Null
-  END AS LR_date,
-  count 
+                
+            CASE 
+                WHEN v_notfound_dat2 > LRD2 THEN v_notfound_dat2
+                when LRD2 > v_notfound_dat2 then LRD2
+                ELSE Null
+            END AS LR_date,
+            count 
 
-FROM (
-    SELECT 
-        man_id,
-        mod_id,
-        Prty,
-        cs,
-        NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS v_notfound_dat2,
-        NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS LRD2,
-        COUNT(*) AS count
-    FROM updatesys.TBL_Prty_pns_@NEW3_N
-    GROUP BY man_id, mod_id, Prty, cs, 
-             NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')),
-             NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
-))
-select 
-    z.man_name,
-    y.module_name,
-    y.wda_flag,
-    x.Prty,
-    x.cs,
-    x.LRD2,
-    x.v_notfound_dat2, 
-    x.status,
-    x.LR_date,
-    x.count
-from main_data x join updatesys.tbl_man_modules@new3_n y on x.man_id = y.man_id and x.mod_id = y.module_id
-join cm.xlp_se_manufacturer@new3_n z on y.man_id = z.man_id 
+            FROM (
+                SELECT 
+                    man_id,
+                    mod_id,
+                    Prty,
+                    cs,
+                    NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS v_notfound_dat2,
+                    NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS LRD2,
+                    COUNT(*) AS count
+                FROM updatesys.TBL_Prty_pns_@NEW3_N
+                GROUP BY man_id, mod_id, Prty, cs, 
+                        NVL(TO_DATE(v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')),
+                        NVL(cm.XLP_RELEASEDATE_FUNCTION_D(LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
+            ))
+            select 
+                z.man_name,
+                y.module_name,
+                y.wda_flag,
+                x.Prty,
+                x.cs,
+                x.LRD2,
+                x.v_notfound_dat2, 
+                x.status,
+                x.LR_date,
+                x.count
+            from main_data x join updatesys.tbl_man_modules@new3_n y on x.man_id = y.man_id and x.mod_id = y.module_id
+            join cm.xlp_se_manufacturer@new3_n z on y.man_id = z.man_id 
         """)
 
         with engine.connect() as connection:
             status_logger.info("Executing WDA_Reg aggregation query for daily download")
             result = connection.execute(aggregation_query)
             df = pd.DataFrame(result.fetchall(), columns=result.keys())
-
+        print(df.head())
         status_logger.info(f"Retrieved {len(df)} aggregated records for WDA_Reg Monitor")
 
         # Standardize column names to match expected format
@@ -945,6 +945,7 @@ join cm.xlp_se_manufacturer@new3_n z on y.man_id = z.man_id
         return filepath
 
     except Exception as e:
+        status_logger.info(f"Error in download_wda_reg_system_data: {str(e)}")
         status_logger.error(f"Error in download_wda_reg_system_data: {str(e)}")
         status_logger.error(traceback.format_exc())
         raise
@@ -1048,6 +1049,80 @@ def get_wda_reg_aggregated_data():
         status_logger.error(f"Error loading data from file {latest_filepath}: {str(e)}")
         status_logger.error(traceback.format_exc())
         raise
+
+
+
+
+def run_daily_summary():
+    query = '''
+    INSERT INTO summary_table (
+        summary_date,
+        "NDF<14", "NotF<90", "P6", "P8", "NDF<7", "P5", "P2", 
+        "NDF<60", "NotF<60", "P1", "P3", "NotF<7", "P10", 
+        "NDF<30", "updated", "P7", "NotF<30", "NDF<90", "NotF<14"
+    )
+    SELECT
+        SYSDATE AS summary_date,
+        MAX(CASE WHEN prty = 'NDF<14'  THEN cnt ELSE 0 END) AS "NDF<14",
+        MAX(CASE WHEN prty = 'NotF<90' THEN cnt ELSE 0 END) AS "NotF<90",
+        MAX(CASE WHEN prty = 'P6'      THEN cnt ELSE 0 END) AS "P6",
+        MAX(CASE WHEN prty = 'P8'      THEN cnt ELSE 0 END) AS "P8",
+        MAX(CASE WHEN prty = 'NDF<7'   THEN cnt ELSE 0 END) AS "NDF<7",
+        MAX(CASE WHEN prty = 'P5'      THEN cnt ELSE 0 END) AS "P5",
+        MAX(CASE WHEN prty = 'P2'      THEN cnt ELSE 0 END) AS "P2",
+        MAX(CASE WHEN prty = 'NDF<60'  THEN cnt ELSE 0 END) AS "NDF<60",
+        MAX(CASE WHEN prty = 'NotF<60' THEN cnt ELSE 0 END) AS "NotF<60",
+        MAX(CASE WHEN prty = 'P1'      THEN cnt ELSE 0 END) AS "P1",
+        MAX(CASE WHEN prty = 'P3'      THEN cnt ELSE 0 END) AS "P3",
+        MAX(CASE WHEN prty = 'NotF<7'  THEN cnt ELSE 0 END) AS "NotF<7",
+        MAX(CASE WHEN prty = 'P10'     THEN cnt ELSE 0 END) AS "P10",
+        MAX(CASE WHEN prty = 'NDF<30'  THEN cnt ELSE 0 END) AS "NDF<30",
+        MAX(CASE WHEN prty = 'updated' THEN cnt ELSE 0 END) AS "updated",
+        MAX(CASE WHEN prty = 'P7'      THEN cnt ELSE 0 END) AS "P7",
+        MAX(CASE WHEN prty = 'NotF<30' THEN cnt ELSE 0 END) AS "NotF<30",
+        MAX(CASE WHEN prty = 'NDF<90'  THEN cnt ELSE 0 END) AS "NDF<90",
+        MAX(CASE WHEN prty = 'NotF<14' THEN cnt ELSE 0 END) AS "NotF<14"
+    FROM (
+        SELECT prty, COUNT(*) AS cnt
+        FROM updatesys.TBL_Prty_pns_@NEW3_N
+        GROUP BY prty
+    )
+    '''
+    try:
+        # Replace with your DB connection setup
+        status_logger.info("Starting run_daily_summary function")
+        engine = create_db_engine()
+        with engine.connect() as conn:
+            conn.execute(text(query))
+            conn.commit()
+        status_logger.info("Daily summary inserted successfully")
+        engine.dispose()
+        engine = create_db_engine()
+        with engine.connect() as conn:
+            result = conn.execute(text("select * from summary_table"))
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+        engine.dispose()
+        path = os.path.join(Config.result_path,'summary.csv')
+        df.to_csv(path, index=False)
+        status_logger.info(f"Summary data saved to {path}")
+    except Exception as e:
+        status_logger.error(f"Error in run_daily_summary: {str(e)}")
+        status_logger.error(traceback.format_exc())
+        raise
+
+def download_summary_from_database():
+    
+    engine = create_db_engine()
+    with engine.connect() as conn:
+        result = conn.execute(text("select * from summary_table"))
+        df = pd.DataFrame(result.fetchall(), columns=result.keys())
+    engine.dispose()
+    path = os.path.join(Config.result_path,'summary.csv')
+    df.to_csv(path, index=False)
+    return df
+
+
+
 
 if __name__=="__main__":
 
