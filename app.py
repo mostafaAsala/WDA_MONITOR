@@ -1985,6 +1985,7 @@ def query_wda_reg_raw_data_with_filters(filters):
                 )
                 ,main_data as(
                 SELECT 
+                    pn,
                     man_id,
                     mod_id,
                     Prty,
@@ -2006,6 +2007,7 @@ def query_wda_reg_raw_data_with_filters(filters):
 
                 FROM (
                     SELECT 
+                        a.pn,
                         a.man_id,
                         a.mod_id,
                         a.Prty,
@@ -2022,6 +2024,7 @@ def query_wda_reg_raw_data_with_filters(filters):
                 )
 
                 select 
+                    x.pn as part_number,
                     z.man_name,
                     y.module_name,
                     y.wda_flag,

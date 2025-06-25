@@ -106,7 +106,8 @@
             background: white;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            padding: 15px;
+            padding: 5px;
+            
             margin-bottom: 20px;
         }
 
@@ -511,100 +512,93 @@
                 <!-- Charts Section -->
                 <div class="row">
                     <!-- Status Distribution Chart -->
-                    <div class="col-md-6 chart-container">
-                        <div class="chart-header">
-                            <h4>Status Distribution</h4>
-                            <button class="download-btn" onclick="downloadChart('statusChart')">
-                                <i class="fas fa-download"></i>
-                            </button>
+                    <!-- Charts Section -->
+                    <div class="row gx-3"> <!-- gx-3 adds horizontal spacing between columns -->
+                        <!-- Status Distribution Chart -->
+                        <div class="col-md-6">
+                            <div class="chart-container">
+                                <div class="chart-header">
+                                    <h4>Status Distribution</h4>
+                                    <button class="download-btn" onclick="downloadChart('statusChart')">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                </div>
+                                <div class="position-relative h-100">
+                                    <div id="statusChart"></div>
+                                    <div class="chart-loading">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="position-relative h-100">
-                            <div id="statusChart"></div>
-                            <div class="chart-loading">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Loading...</span>
+
+                        <!-- Priority Distribution Chart -->
+                        <div class="col-md-6">
+                            <div class="chart-container">
+                                <div class="chart-header">
+                                    <h4>Priority Distribution</h4>
+                                    <button class="download-btn" onclick="downloadChart('priorityChart')">
+                                        <i class="fas fa-download"></i>
+                                    </button>
+                                </div>
+                                <div class="position-relative h-100">
+                                    <div id="priorityChart"></div>
+                                    <div class="chart-loading">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Priority Distribution Chart -->
-                    <div class="col-md-6 chart-container">
-                        <div class="chart-header">
-                            <h4>Priority Distribution</h4>
-                            <button class="download-btn" onclick="downloadChart('priorityChart')">
-                                <i class="fas fa-download"></i>
-                            </button>
-                        </div>
-                        <div class="position-relative h-100">
-                            <div id="priorityChart"></div>
-                            <div class="chart-loading">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                            </div>
-                        </div>
+<!-- Second Row Charts -->
+<div class="row mt-4 gx-3 d-flex align-items-stretch">
+    <!-- Manufacturer Chart -->
+    <div class="col-md-6 d-flex">
+        <div class="chart-container flex-fill">
+            <div class="chart-header">
+                <h4>Top Manufacturers</h4>
+                <button class="download-btn" onclick="downloadChart('manufacturerChart')">
+                    <i class="fas fa-download"></i>
+                </button>
+            </div>
+            <div class="position-relative h-100">
+                <div id="manufacturerChart"></div>
+                <div class="chart-loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
 
-                <!-- Second Row Charts -->
-                <div class="row mt-4">
-                    <!-- Manufacturer Distribution Chart -->
-                    <div class="col-md-6 chart-container">
-                        <div class="chart-header">
-                            <h4>Top Manufacturers</h4>
-                            <button class="download-btn" onclick="downloadChart('manufacturerChart')">
-                                <i class="fas fa-download"></i>
-                            </button>
-                        </div>
-                        <div class="position-relative h-100">
-                            <div id="manufacturerChart"></div>
-                            <div class="chart-loading">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- WDA Flag Chart -->
-                    <!--
-                    <div class="col-md-6 chart-container">
-                        <div class="chart-header">
-                            <h4>WDA Flag Distribution</h4>
-                            <button class="download-btn" onclick="downloadChart('wdaFlagChart')">
-                                <i class="fas fa-download"></i>
-                            </button>
-                        </div>
-                        <div class="position-relative h-100">
-                            <div id="wdaFlagChart"></div>
-                            <div class="chart-loading">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    -->
-
-                    <!-- LC Outdated Distribution Chart -->
-                    <div class="col-md-6 chart-container">
-                        <div class="chart-header">
-                            <h4>LC Outdated Distribution</h4>
-                            <button class="download-btn" onclick="downloadChart('lcOutdatedChart')">
-                                <i class="fas fa-download"></i>
-                            </button>
-                        </div>
-                        <div class="position-relative h-100">
-                            <div id="lcOutdatedChart"></div>
-                            <div class="chart-loading">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                            </div>
-                        </div>
+    <!-- LC Outdated Chart -->
+    <div class="col-md-6 d-flex">
+        <div class="chart-container flex-fill">
+            <div class="chart-header">
+                <h4>LC Outdated Distribution</h4>
+                <button class="download-btn" onclick="downloadChart('lcOutdatedChart')">
+                    <i class="fas fa-download"></i>
+                </button>
+            </div>
+            <div class="position-relative h-100">
+                <div id="lcOutdatedChart"></div>
+                <div class="chart-loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
 
                 <!-- Third Row Charts -->
                 <div class="row mt-4">
@@ -1064,104 +1058,99 @@
             const lcOutdatedPercentage = stats.lc_outdated_percentage || 0;
 
             const statsHTML = `
-                <div class="col-md-2">
-                    <div class="card stat-card total-parts animate__animated animate__fadeInUp">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="card-subtitle mb-2">Total Parts</h6>
-                                    <h2 class="card-title mb-0 counter" data-target="${totalParts}">${totalParts.toLocaleString()}</h2>
-                                    <small class="opacity-75">System-wide total</small>
-                                </div>
-                                <i class="fas fa-boxes stat-icon"></i>
-                            </div>
-                        </div>
-                    </div>
+              <div class="d-flex flex-wrap justify-content-center gap-3">
+    <div class="card stat-card total-parts animate__animated animate__fadeInUp" style="width: 250px;">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="card-subtitle mb-2">Total Parts</h6>
+                    <h2 class="card-title mb-0 counter" data-target="${totalParts}">${totalParts.toLocaleString()}</h2>
+                    <small class="opacity-75">System-wide total</small>
                 </div>
-                <div class="col-md-2">
-                    <div class="card stat-card found-parts animate__animated animate__fadeInUp" style="animation-delay: 0.1s;">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="card-subtitle mb-2">Found Parts</h6>
-                                    <h2 class="card-title mb-0 counter" data-target="${foundParts}">${foundParts.toLocaleString()}</h2>
-                                    <small class="opacity-75">${foundPercentage}% of total</small>
-                                </div>
-                                <i class="fas fa-check-circle stat-icon"></i>
-                            </div>
-                        </div>
-                    </div>
+                <i class="fas fa-boxes stat-icon"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="card stat-card found-parts animate__animated animate__fadeInUp" style="animation-delay: 0.1s; width: 250px;">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="card-subtitle mb-2">Found Parts</h6>
+                    <h2 class="card-title mb-0 counter" data-target="${foundParts}">${foundParts.toLocaleString()}</h2>
+                    <small class="opacity-75">${foundPercentage}% of total</small>
                 </div>
-                <div class="col-md-2">
-                    <div class="card stat-card not-found-parts animate__animated animate__fadeInUp" style="animation-delay: 0.2s;">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="card-subtitle mb-2">Not Found</h6>
-                                    <h2 class="card-title mb-0 counter" data-target="${notFoundParts}">${notFoundParts.toLocaleString()}</h2>
-                                    <small class="opacity-75">${notFoundPercentage}% of total</small>
-                                </div>
-                                <i class="fas fa-times-circle stat-icon"></i>
-                            </div>
-                        </div>
-                    </div>
+                <i class="fas fa-check-circle stat-icon"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="card stat-card not-found-parts animate__animated animate__fadeInUp" style="animation-delay: 0.2s; width: 250px;">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="card-subtitle mb-2">Not Found</h6>
+                    <h2 class="card-title mb-0 counter" data-target="${notFoundParts}">${notFoundParts.toLocaleString()}</h2>
+                    <small class="opacity-75">${notFoundPercentage}% of total</small>
                 </div>
-                <div class="col-md-2">
-                    <div class="card stat-card not-run-parts animate__animated animate__fadeInUp" style="animation-delay: 0.3s;">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="card-subtitle mb-2">Not Run</h6>
-                                    <h2 class="card-title mb-0 counter" data-target="${notRunParts}">${notRunParts.toLocaleString()}</h2>
-                                    <small class="opacity-75">${notRunPercentage}% of total</small>
-                                </div>
-                                <i class="fas fa-question-circle stat-icon"></i>
-                            </div>
-                        </div>
-                    </div>
+                <i class="fas fa-times-circle stat-icon"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="card stat-card not-run-parts animate__animated animate__fadeInUp" style="animation-delay: 0.3s; width: 250px;">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="card-subtitle mb-2">Not Run</h6>
+                    <h2 class="card-title mb-0 counter" data-target="${notRunParts}">${notRunParts.toLocaleString()}</h2>
+                    <small class="opacity-75">${notRunPercentage}% of total</small>
                 </div>
-                <div class="col-md-2">
-                    <div class="card stat-card expired-parts animate__animated animate__fadeInUp" style="animation-delay: 0.4s;">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="card-subtitle mb-2">Expired Parts</h6>
-                                    <h2 class="card-title mb-0 counter" data-target="${expiredParts}">${expiredParts.toLocaleString()}</h2>
-                                    <small class="opacity-75">${expiredPercentage}% of total</small>
-                                </div>
-                                <i class="fas fa-exclamation-circle stat-icon"></i>
-                            </div>
-                        </div>
-                    </div>
+                <i class="fas fa-question-circle stat-icon"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="card stat-card expired-parts animate__animated animate__fadeInUp" style="animation-delay: 0.4s; width: 250px;">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="card-subtitle mb-2">Expired Parts</h6>
+                    <h2 class="card-title mb-0 counter" data-target="${expiredParts}">${expiredParts.toLocaleString()}</h2>
+                    <small class="opacity-75">${expiredPercentage}% of total</small>
                 </div>
-                <div class="col-md-2">
-                    <div class="card stat-card lc-outdated-parts animate__animated animate__fadeInUp" style="animation-delay: 0.5s; background: linear-gradient(45deg, #e74c3c, #c0392b);">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="card-subtitle mb-2">LC Outdated</h6>
-                                    <h2 class="card-title mb-0 counter" data-target="${lcOutdatedParts}">${lcOutdatedParts.toLocaleString()}</h2>
-                                    <small class="opacity-75">${lcOutdatedPercentage}% of total</small>
-                                </div>
-                                <i class="fas fa-clock stat-icon"></i>
-                            </div>
-                        </div>
-                    </div>
+                <i class="fas fa-exclamation-circle stat-icon"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="card stat-card lc-outdated-parts animate__animated animate__fadeInUp" style="animation-delay: 0.5s; background: linear-gradient(45deg, #e74c3c, #c0392b); width: 250px;">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="card-subtitle mb-2">LC Outdated</h6>
+                    <h2 class="card-title mb-0 counter" data-target="${lcOutdatedParts}">${lcOutdatedParts.toLocaleString()}</h2>
+                    <small class="opacity-75">${lcOutdatedPercentage}% of total</small>
                 </div>
-                <div class="col-md-2">
-                    <div class="card stat-card animate__animated animate__fadeInUp" style="animation-delay: 0.6s; background: linear-gradient(45deg, #667eea, #764ba2);">
-                        <div class="card-body">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="card-subtitle mb-2">Unique Manufacturers</h6>
-                                    <h2 class="card-title mb-0">${uniqueManufacturers}</h2>
-                                    <small class="opacity-75">Active manufacturers</small>
-                                </div>
-                                <i class="fas fa-industry stat-icon"></i>
-                            </div>
-                        </div>
-                    </div>
+                <i class="fas fa-clock stat-icon"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="card stat-card animate__animated animate__fadeInUp" style="animation-delay: 0.6s; background: linear-gradient(45deg, #667eea, #764ba2); width: 250px;">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="card-subtitle mb-2">Unique Manufacturers</h6>
+                    <h2 class="card-title mb-0">${uniqueManufacturers}</h2>
+                    <small class="opacity-75">Active manufacturers</small>
                 </div>
+                <i class="fas fa-industry stat-icon"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
             `;
 
             $('#statsCards').html(statsHTML);
