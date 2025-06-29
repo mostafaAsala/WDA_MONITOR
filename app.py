@@ -50,6 +50,9 @@ import zipfile
 import glob
 import pickle
 
+#os.environ["MODIN_ENGINE"] = "dask"
+#import modin.pandas as pd
+print("import modin.pandas as pd")
 class SafeRotatingFileHandler(RotatingFileHandler):
 	def doRollover(self):
 		"""
@@ -125,6 +128,7 @@ filtered_data = None
 wda_reg_system_data = pd.DataFrame()
 wda_reg_data_lock = threading.Lock()
 wda_reg_data_loaded = False
+all_cs_labels = set()
 
 def load_module_data():
 	#load data from matrix man- module- running status - comment - old
@@ -134,7 +138,7 @@ def load_module_data():
 
 def load_wda_reg_system_data():
 	"""Load WDA_Reg system data into memory for fast access"""
-	global wda_reg_system_data, wda_reg_data_loaded
+	global wda_reg_system_data, wda_reg_data_loaded, all_cs_labels
 
 	try:
 		with wda_reg_data_lock:
@@ -157,7 +161,28 @@ def load_wda_reg_system_data():
 				wda_reg_system_data['STATUS'] = wda_reg_system_data['STATUS'].astype(str)
 				wda_reg_system_data['COUNT'] = wda_reg_system_data['COUNT'].astype(int)
 				wda_reg_system_data['CS'] = wda_reg_system_data['CS'].astype(str)
+				wda_reg_system_data['is_expired'] = wda_reg_system_data['is_expired'].astype(bool)
+                
+                # Clean CS
+				wda_reg_system_data['CS_clean'] = wda_reg_system_data['CS'].fillna('').astype(str).replace('nan', '')
+                # Split and extract unique labels
+				all_cs_labels = set()
 
+				def clean_split(cs):
+					if not cs:
+						return []
+					labels = [label.strip() for label in cs.split('|') if label.strip()]
+					all_cs_labels.update(labels)
+					return labels
+                
+				wda_reg_system_data['CS_labels_list'] = wda_reg_system_data['CS_clean'].apply(clean_split)
+				for label in all_cs_labels:
+					col_name = f'CS_{label}'
+					wda_reg_system_data[col_name] = wda_reg_system_data['CS_labels_list'].apply(lambda x: int(label in x))
+				wda_reg_system_data = wda_reg_system_data.drop(['CS_labels_list'], axis=1)
+                        
+				wda_reg_system_data['WDA_FLAG'] = wda_reg_system_data['WDA_FLAG'].astype(int)
+				wda_reg_system_data['LC_OUTDATED'] = wda_reg_system_data['LC_OUTDATED'].astype(int)
 
 				# Convert boolean column
 				if 'is_expired' in wda_reg_system_data.columns:
@@ -1423,7 +1448,9 @@ def get_status_by_date():
 
 def calculate_wda_reg_aggregations(df:pd.DataFrame):
     """Calculate pre-aggregated data for WDA_Reg visualizations"""
+    global all_cs_labels
     try:
+        time_start = time.time()
         # Basic statistics
         total_parts = int(df['COUNT'].sum())
         found_parts = int(df[df['STATUS'] == 'found']['COUNT'].sum())
@@ -1434,14 +1461,14 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
         lc_outdated_parts = int(df[df['LC_OUTDATED'] == 1]['COUNT'].sum())
         unique_modules = int(df['MODULE_NAME'].nunique())
         unique_manufacturers = int(df['MAN_NAME'].nunique())
-
+        
         # Calculate percentages
         found_percentage = round((found_parts / total_parts) * 100, 1) if total_parts > 0 else 0
         not_found_percentage = round((not_found_parts / total_parts) * 100, 1) if total_parts > 0 else 0
         not_run_percentage = round((not_run_parts / total_parts) * 100, 1) if total_parts > 0 else 0
         expired_percentage = round((expired_parts / total_parts) * 100, 1) if total_parts > 0 else 0
         lc_outdated_percentage = round((lc_outdated_parts / total_parts) * 100, 1) if total_parts > 0 else 0
-
+        
         # Status distribution for charts
         status_counts = df.groupby('STATUS')['COUNT'].sum().to_dict()
         status_chart_data = {
@@ -1489,31 +1516,19 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
                 1: '#dc3545'   # Red for Outdated
             }
         }
+        print("time for lc outdated chart: ",time.time()-time_start)
+        time_start = time.time()
 
         # CS distribution (optimized multi-label processing)
-        # First, get all unique CS labels from the dataset
-        all_cs_labels = set()
-        df['CS_clean'] = df['CS'].fillna('').astype(str)
-        df['CS_clean'] = df['CS_clean'].replace('nan', '')
-
-        # Extract all unique labels efficiently
-        for cs_value in df['CS_clean'].unique():
-            if cs_value:
-                all_cs_labels.update([label.strip() for label in cs_value.split('|') if label.strip()])
-
-        # Calculate counts for each label using vectorized operations
-        cs_counts = {}
-        for label in all_cs_labels:
-            # Use vectorized string contains operation
-            mask = df['CS_clean'].str.contains(f'\\b{re.escape(label)}\\b', regex=True, na=False)
-            cs_counts[label] = df[mask]['COUNT'].sum()
-
-        # Sort CS labels by count (descending) and take top 15
-        sorted_cs = sorted(cs_counts.items(), key=lambda x: x[1], reverse=True)[:15]
+        #get count of each cs label
         cs_chart_data = {
-            'labels': [item[0] for item in sorted_cs],
-            'values': [int(item[1]) for item in sorted_cs]
+            'labels': list(all_cs_labels),
+            'values': [int((df[f'CS_{label}'] * df['COUNT']).sum()) for label in all_cs_labels]
         }
+            
+
+        print("time for cs chart: ",time.time()-time_start)
+        time_start = time.time()
 
         # Expired vs Active
         expired_chart_data = {
@@ -1521,11 +1536,15 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
             'values': [total_parts - expired_parts, expired_parts],
             'colors': ['#27ae60', '#e67e22']
         }
+        print("time for expired chart: ",time.time()-time_start)
+        time_start = time.time()
 
         # Get summary table data for the summary timeline chart
         summary_timeline_data = get_summary()
         summary_timeline_data = summary_timeline_data.to_dict('records')
-        print("summary_timeline_data: ",summary_timeline_data)
+        #print("summary_timeline_data: ",summary_timeline_data)
+        print("time for summary timeline data: ",time.time()-time_start)
+        time_start = time.time()
         # Timeline data (by LR_DATE) - initially show past year
         timeline_data = {'dates': [], 'counts': [], 'date_range': {'min_date': '', 'max_date': ''}}
         if 'LR_DATE' in df.columns:
@@ -1559,6 +1578,8 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
                         }
                     }
 
+        print("time for timeline data: ",time.time()-time_start)
+        time_start = time.time()
         # Use the already extracted CS labels for filter options (reuse from chart calculation)
         cs_labels = all_cs_labels
 
@@ -1573,7 +1594,8 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
             'cs_labels': sorted(list(cs_labels)),
             'expired_options': ['true', 'false']
         }
-
+        print("time for filter options: ",time.time()-time_start)
+        time_start = time.time()
         # Prepare aggregated table data (grouped by MAN_NAME and MODULE_NAME)
         table_data = []
         
@@ -1592,22 +1614,8 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
         
         table_data = grouped_df.to_dict(orient='records')
         
-        """for (man, module), group in grouped_df:
-        	# Outdated: sum of COUNT where PRTY starts with 'P'
-            outdated_count = group[group['PRTY'].str.startswith('P')]['COUNT'].sum()
-            # Found: sum of COUNT where STATUS == 'found'
-            found_count = group[group['STATUS'] == 'found']['COUNT'].sum()
-            # Error: sum of COUNT where STATUS == 'Error'
-            error_count = group[group['STATUS'] == 'Error']['COUNT'].sum()
-
-            table_data.append({
-        	'MAN_NAME': man,
-        	'MODULE_NAME': module,
-        	'outdated_count': int(outdated_count),
-        	'found_count': int(found_count),
-        	'error_count': int(error_count)
-        	})"""
-
+        
+        print("time for table data: ",time.time()-time_start)
         return {
             'stats': {
                 'total_parts': total_parts,
@@ -1652,6 +1660,7 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
 @permission_required('view')
 def get_wda_reg_data():
     """API endpoint to fetch WDA_Reg aggregated data with pre-calculated visualizations"""
+    log_user_activity(session['username'], 'WDA_REG_DATA_ACCESS', 'Accessed WDA_Reg aggregated data from cache')
     username = session['username']
     try:
         app.logger.info(f'User {username} fetching WDA_Reg aggregated data from cache')
@@ -1723,6 +1732,7 @@ def refresh_wda_reg_data():
 @permission_required('view')
 def get_wda_reg_filtered_aggregations():
     """API endpoint to get filtered aggregations for WDA_Reg data"""
+    n_time = time.time()
     username = session['username']
     try:
         app.logger.info(f'User {username} requesting filtered WDA_Reg aggregations')
@@ -1732,31 +1742,26 @@ def get_wda_reg_filtered_aggregations():
 
         # Get data from memory cache
         if not wda_reg_data_loaded or wda_reg_system_data.empty:
+            print("loading from database")
             if not load_wda_reg_system_data():
                 df = get_wda_reg_aggregated_data()
             else:
                 df = wda_reg_system_data.copy()
         else:
+            print("loading from cache")
             df = wda_reg_system_data.copy()
 
-        df['COUNT'] = df['COUNT'].astype(int)
-        df['is_expired'] = df['is_expired'].astype(bool)
-        df['STATUS'] = df['STATUS'].astype(str)
-        df['PRTY'] = df['PRTY'].astype(str)
-        df['CS'] = df['CS'].astype(str)
-        df['MODULE_NAME'] = df['MODULE_NAME'].astype(str)
-        df['MAN_NAME'] = df['MAN_NAME'].astype(str)
-        df['WDA_FLAG'] = df['WDA_FLAG'].astype(int)
-        df['LC_OUTDATED'] = df['LC_OUTDATED'].astype(int)
-
-
+        
+        print("time for loading: ",time.time()-n_time)
+        n_time = time.time()
         # Apply filters from request
         filters = request.json or {}
         filtered_df = apply_wda_reg_filters(df, filters)
-
+        print("time for filtering: ",time.time()-n_time)
+        n_time = time.time()
         # Calculate aggregations for filtered data
         aggregated_data = calculate_wda_reg_aggregations(filtered_df)
-
+        print("time for aggregation: ",time.time()-n_time)
         app.logger.info(f'Successfully served filtered WDA_Reg aggregations ({len(filtered_df)} records after filtering)')
 
         return jsonify({
@@ -1982,49 +1987,61 @@ def query_wda_reg_raw_data_with_filters(filters):
                     OR ( c.se_lc = 'Obsolete' )
                     OR ( c.se_lc = 'LTB' AND bb.se_lc_date IS NOT NULL )) 
                     OR bb.last_checked_date IS NULL)
+                ),latest_status as (
+                    SELECT mpn,man_id, status
+                    FROM (
+                        SELECT mpn, status,man_id, check_date,
+                            ROW_NUMBER() OVER (PARTITION BY mpn ORDER BY check_date DESC) AS rn
+                        FROM webspider.tbl_prsys_feed_notfound@new3_n
+                    )
+                    WHERE rn = 1
                 )
                 ,main_data as(
-                SELECT 
-                    pn,
-                    man_id,
-                    mod_id,
-                    Prty,
-                    cs,
-                    LRD2,
-                    v_notfound_dat2,  
-                    CASE 
-                        WHEN v_notfound_dat2 > LRD2 THEN 'not found'
-                        WHEN LRD2 > v_notfound_dat2 THEN 'found'
-                        WHEN LRD2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') 
-                            AND v_notfound_dat2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') THEN 'not run'
-                    END AS status,    
-                    CASE 
-                        WHEN v_notfound_dat2 > LRD2 THEN v_notfound_dat2
-                        when LRD2 > v_notfound_dat2 then LRD2
-                        ELSE Null
-                    END AS LR_date,
-                    lc_outdated
-
-                FROM (
                     SELECT 
-                        a.pn,
-                        a.man_id,
-                        a.mod_id,
-                        a.Prty,
-                        a.cs,
-                        NVL(TO_DATE(a.v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS v_notfound_dat2,
-                        NVL(cm.XLP_RELEASEDATE_FUNCTION_D(a.LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS LRD2,
-                        case 
-                            when b.pn is null then 0 else 1
-                        end as lc_outdated
-                    FROM updatesys.TBL_Prty_pns_@NEW3_N a left join LC_outdated b on a.man_id = b.man_id and a.pn = b.pn
-                    
+                        pn,
+                        man_id,
+                        mod_id,
+                        Prty,
+                        cs,
+                        LRD2,
+                        v_notfound_dat2,  
+                        CASE 
+                            WHEN v_notfound_dat2 > LRD2 THEN 'not found'
+                            WHEN LRD2 > v_notfound_dat2 THEN 'found'
+                            WHEN LRD2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') 
+                                AND v_notfound_dat2 = TO_DATE('01-JAN-1970', 'DD-MON-YYYY') THEN 'not run'
+                        END AS status,
 
-                )
-                )
+                        
+                        CASE 
+                            WHEN v_notfound_dat2 > LRD2 THEN v_notfound_dat2
+                            when LRD2 > v_notfound_dat2 then LRD2
+                            ELSE Null
+                        END AS LR_date,
+                        lc_outdated,
+                        error_status
 
-                select 
-                    x.pn as part_number,
+                    FROM (
+                        SELECT 
+                            a.pn,
+                            a.man_id,
+                            a.mod_id,
+                            a.Prty,
+                            a.cs,
+                            NVL(TO_DATE(a.v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS v_notfound_dat2,
+                            NVL(cm.XLP_RELEASEDATE_FUNCTION_D(a.LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')) AS LRD2,
+                            case 
+                                when b.pn is null then 0 else 1
+                            end as lc_outdated,
+                            ls.status as error_status
+                        FROM updatesys.TBL_Prty_pns_@NEW3_N a left join LC_outdated b on a.man_id = b.man_id and a.pn = b.pn
+                        left join latest_status ls on ls.mpn = a.pn and ls.man_id = a.man_id 
+                        
+                    )
+                    )
+
+                select
+                    x.pn,
                     z.man_name,
                     y.module_name,
                     y.wda_flag,
@@ -2034,8 +2051,8 @@ def query_wda_reg_raw_data_with_filters(filters):
                     x.v_notfound_dat2, 
                     x.status,
                     x.LR_date,
-                    x.lc_outdated
-                    
+                    x.lc_outdated,
+                    x.error_status
                 from main_data x join updatesys.tbl_man_modules@new3_n y on x.man_id = y.man_id and x.mod_id = y.module_id
                 join cm.xlp_se_manufacturer@new3_n z on y.man_id = z.man_id 
 
@@ -2139,32 +2156,42 @@ def query_wda_reg_raw_data_with_filters(filters):
 
 def apply_wda_reg_filters(df, filters):
     """Apply filters to WDA_Reg data"""
-    filtered_df = df.copy()
+    filtered_df = df
+    start_time = time.time()
 
     if filters.get('man_names'):
         filtered_df = filtered_df[filtered_df['MAN_NAME'].isin(filters['man_names'])]
-
+    print("time for filter man names: ",time.time()-start_time)
+    start_time = time.time()
     if filters.get('module_names'):
         filtered_df = filtered_df[filtered_df['MODULE_NAME'].isin(filters['module_names'])]
-
+    print("time for filter module names: ",time.time()-start_time)
+    start_time = time.time()
     if filters.get('priorities'):
         filtered_df = filtered_df[filtered_df['PRTY'].isin(filters['priorities'])]
-
+    print("time for filter priorities: ",time.time()-start_time)
+    start_time = time.time()
     if filters.get('statuses'):
         filtered_df = filtered_df[filtered_df['STATUS'].isin(filters['statuses'])]
-
+    print("time for filter statuses: ",time.time()-start_time)
+    start_time = time.time()
     if filters.get('wda_flags'):
         filtered_df = filtered_df[filtered_df['WDA_FLAG'].isin(filters['wda_flags'])]
-    print(filters['lc_outdated_filter'])
+    
+    print("time for filter wda flags: ",time.time()-start_time)
+    start_time = time.time()
+
     if filters.get('lc_outdated_filter'):
         filtered_df = filtered_df[filtered_df['LC_OUTDATED'].isin([int(x) for x in filters['lc_outdated_filter']])]
-
+    print("time for filter lc outdated: ",time.time()-start_time)
+    start_time = time.time()
     if filters.get('expired_filter'):
         if 'true' in filters['expired_filter'] and 'false' not in filters['expired_filter']:
             filtered_df = filtered_df[filtered_df['is_expired'] == True]
         elif 'false' in filters['expired_filter'] and 'true' not in filters['expired_filter']:
             filtered_df = filtered_df[filtered_df['is_expired'] == False]
-
+    print("time for filter expired: ",time.time()-start_time)
+    start_time = time.time()
     # CS filter (optimized multi-label support)
     if filters.get('cs_labels'):
         cs_filter_labels = filters['cs_labels']
@@ -2176,7 +2203,11 @@ def apply_wda_reg_filters(df, filters):
         pattern = '|'.join([f'\\b{re.escape(label)}\\b' for label in cs_filter_labels])
         mask = filtered_df['CS_clean'].str.contains(pattern, regex=True, na=False)
         filtered_df = filtered_df[mask]
+    print("time for filter cs labels: ",time.time()-start_time)
 
+
+
+    start_time = time.time()
     # Date range filter for timeline
     if filters.get('date_start') or filters.get('date_end'):
         if 'LR_DATE' in filtered_df.columns:

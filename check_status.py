@@ -847,7 +847,7 @@ def download_wda_reg_system_data():
     try:
         # Use the working query from the original function
         aggregation_query = text("""
-            with 
+           with 
                 LC_outdated as(
                 SELECT 
                     u.COM_PARTNUM AS PN, 
@@ -865,6 +865,14 @@ def download_wda_reg_system_data():
                     OR ( c.se_lc = 'Obsolete' )
                     OR ( c.se_lc = 'LTB' AND bb.se_lc_date IS NOT NULL )) 
                     OR bb.last_checked_date IS NULL)
+                ),latest_status as (
+                    SELECT mpn,man_id, status
+                    FROM (
+                        SELECT mpn, status,man_id, check_date,
+                            ROW_NUMBER() OVER (PARTITION BY mpn ORDER BY check_date DESC) AS rn
+                        FROM webspider.tbl_prsys_feed_notfound@new3_n
+                    )
+                    WHERE rn = 1
                 )
                 ,main_data as(
                     SELECT 
@@ -888,6 +896,7 @@ def download_wda_reg_system_data():
                             ELSE Null
                         END AS LR_date,
                         lc_outdated,
+                        error_status,
                         count 
 
                     FROM (
@@ -901,15 +910,16 @@ def download_wda_reg_system_data():
                             case 
                                 when b.pn is null then 0 else 1
                             end as lc_outdated,
+                            ls.status as error_status,
                             COUNT(*) AS count
                         FROM updatesys.TBL_Prty_pns_@NEW3_N a left join LC_outdated b on a.man_id = b.man_id and a.pn = b.pn
-                        
+                        left join latest_status ls on ls.mpn = a.pn and ls.man_id = a.man_id 
                         GROUP BY a.man_id, a.mod_id, a.Prty, cs, 
                             case 
                                 when b.pn is null then 0 else 1
                             end,
                             NVL(TO_DATE(a.v_notfound_dat, 'DD-MON-YYYY'), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')),
-                            NVL(cm.XLP_RELEASEDATE_FUNCTION_D(a.LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY'))
+                            NVL(cm.XLP_RELEASEDATE_FUNCTION_D(a.LRD), TO_DATE('01-JAN-1970', 'DD-MON-YYYY')),ls.status
                     )
                     )
 
@@ -924,7 +934,7 @@ def download_wda_reg_system_data():
                     x.status,
                     x.LR_date,
                     x.lc_outdated,
-                    
+                    x.error_status,
                     x.count
                 from main_data x join updatesys.tbl_man_modules@new3_n y on x.man_id = y.man_id and x.mod_id = y.module_id
                 join cm.xlp_se_manufacturer@new3_n z on y.man_id = z.man_id 
