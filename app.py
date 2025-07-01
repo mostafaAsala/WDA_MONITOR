@@ -147,7 +147,7 @@ def load_wda_reg_system_data():
 
 			if os.path.exists(latest_filepath):
 				# Load data from cached file
-				wda_reg_system_data = pd.read_csv(latest_filepath)
+				wda_reg_system_data = pd.read_csv(latest_filepath,low_memory=False)
 
 				# Convert date columns back to datetime
 				date_columns = ['LRD2', 'V_NOTFOUND_DAT2', 'LR_DATE', 'download_timestamp']
@@ -162,7 +162,9 @@ def load_wda_reg_system_data():
 				wda_reg_system_data['COUNT'] = wda_reg_system_data['COUNT'].astype(int)
 				wda_reg_system_data['CS'] = wda_reg_system_data['CS'].astype(str)
 				wda_reg_system_data['is_expired'] = wda_reg_system_data['is_expired'].astype(bool)
-                
+				wda_reg_system_data['date_only'] = wda_reg_system_data['LR_DATE'].dt.date
+                    
+
                 # Clean CS
 				wda_reg_system_data['CS_clean'] = wda_reg_system_data['CS'].fillna('').astype(str).replace('nan', '')
                 # Split and extract unique labels
@@ -205,7 +207,7 @@ def load_data():
 	global global_df
 	global grouped_data
 	try:
-		global_df = pd.read_csv(os.path.join(Config.result_path, 'results.csv'))
+		global_df = pd.read_csv(os.path.join(Config.result_path, 'results.csv'),low_memory=False)
 		global_df['status'] = global_df['status'].astype(str)
 		global_df['status'].fillna('-',inplace=True)
 		global_df['status_orig'] = global_df['status'].copy()
@@ -782,7 +784,7 @@ def upload_to_amazon():
             app.logger.info(f'User {username} uploading file to Amazon: {filename}')
             log_user_activity(username, 'AMAZON_UPLOAD', f'Uploaded to Amazon: {filename}')
             file_path = os.path.join(Config.WORK_FOLDER, filename)
-            df = pd.read_csv(file_path, sep='\t')
+            df = pd.read_csv(file_path, sep='\t',low_memory=False)
             upload_file_to_amazon(df,filename)
             app.logger.info(f'File uploaded to Amazon successfully by {username}: {filename}')
             return jsonify({'message': 'File uploaded to Amazon successfully'})
@@ -1548,9 +1550,7 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
         # Timeline data (by LR_DATE) - initially show past year
         timeline_data = {'dates': [], 'counts': [], 'date_range': {'min_date': '', 'max_date': ''}}
         if 'LR_DATE' in df.columns:
-            df_timeline = df.copy()
-            df_timeline['LR_DATE'] = pd.to_datetime(df_timeline['LR_DATE'], errors='coerce')
-            df_timeline = df_timeline.dropna(subset=['LR_DATE'])
+            df_timeline = df.dropna(subset=['LR_DATE'])
 
             if not df_timeline.empty:
                 # Get date range for filter options
@@ -1565,7 +1565,6 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
                 df_timeline_filtered = df_timeline[df_timeline['LR_DATE'].dt.date >= start_date]
 
                 if not df_timeline_filtered.empty:
-                    df_timeline_filtered['date_only'] = df_timeline_filtered['LR_DATE'].dt.date
                     timeline_counts = df_timeline_filtered.groupby('date_only')['COUNT'].sum().sort_index()
                     timeline_data = {
                         'dates': [str(d) for d in timeline_counts.index],
@@ -1592,7 +1591,8 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
             'wda_flags': sorted(df['WDA_FLAG'].unique().tolist()),
             'lc_outdated_options': sorted(df['LC_OUTDATED'].unique().tolist()),
             'cs_labels': sorted(list(cs_labels)),
-            'expired_options': ['true', 'false']
+            'expired_options': ['true', 'false'],
+            'error_status': sorted(df['ERROR_STATUS'].dropna().unique().tolist())  # <-- Add this line
         }
         print("time for filter options: ",time.time()-time_start)
         time_start = time.time()
@@ -1614,6 +1614,12 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
         
         table_data = grouped_df.to_dict(orient='records')
         
+        # Error Status distribution for charts
+        error_status_counts = df.groupby('ERROR_STATUS')['COUNT'].sum().to_dict()
+        error_status_chart_data = {
+            'labels': list(error_status_counts.keys()),
+            'values': [int(v) for v in error_status_counts.values()],
+        }
         
         print("time for table data: ",time.time()-time_start)
         return {
@@ -1641,7 +1647,8 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
                 'cs': cs_chart_data,
                 'expired': expired_chart_data,
                 'timeline': timeline_data,
-                'summary_timeline': summary_timeline_data
+                'summary_timeline': summary_timeline_data,
+                'error_status': error_status_chart_data,  # <-- Add this line
             },
             'filter_options': filter_options,
             'table_data': table_data
@@ -2106,7 +2113,10 @@ def query_wda_reg_raw_data_with_filters(filters):
         if filters.get('date_end'):
             where_conditions.append("x.LR_date <= TO_DATE(:date_end, 'YYYY-MM-DD')")
             query_params['date_end'] = filters['date_end']
-
+        if filters.get('error_status'):
+            where_conditions.append("x.error_status IN (:error_status)")
+            query_params['error_status'] = filters['error_status']
+            
         # Add CS labels filter if provided
         if filters.get('cs_labels') and len(filters['cs_labels']) > 0:
             cs_conditions = []
@@ -2179,6 +2189,11 @@ def apply_wda_reg_filters(df, filters):
         filtered_df = filtered_df[filtered_df['WDA_FLAG'].isin(filters['wda_flags'])]
     
     print("time for filter wda flags: ",time.time()-start_time)
+    start_time = time.time()
+    if filters.get('error_status'):
+        filtered_df = filtered_df[filtered_df['ERROR_STATUS'].isin(filters['error_status'])]
+    
+    print("time for filter error status: ",time.time()-start_time)
     start_time = time.time()
 
     if filters.get('lc_outdated_filter'):
@@ -2388,7 +2403,7 @@ def download_report(report_type, start_date, end_date):
             if os.path.exists(file_path):
                 try:
                     # Read the CSV file and add date column
-                    df = pd.read_csv(file_path)
+                    df = pd.read_csv(file_path,low_memory=False)
                     df['report_date'] = formatted_date
                     all_dfs.append(df)
                 except Exception as e:
@@ -2505,7 +2520,7 @@ def weekly_scheduled_upload_task():
 						continue
 
 					# Get only expired parts
-					df = pd.read_csv(file_path, sep='\t')
+					df = pd.read_csv(file_path, sep='\t',low_memory=False)
 					today = datetime.now().date()
 
 					# Filter for expired parts
@@ -2567,7 +2582,8 @@ def daily_summary_calculation():
 def get_summary():
     path = os.path.join(Config.result_path,'summary.csv')
     if os.path.exists(path) and datetime.fromtimestamp(os.path.getmtime(path)).date() == datetime.now().date():
-        df = pd.read_csv(path)
+        df = pd.read_csv(path,low_memory=False)
+        df = df.sort_values(by='summary_date')
         print("returning from cache")
         return df
     else:

@@ -825,7 +825,7 @@ def daily_check_all2():
 
     files_string , daily_export = Get_status(ignore_date = False,daily_export=True)
     df, file_name = Download_results(files_string, daily_export)
-    df = pd.read_csv(r'results\results.csv')
+    df = pd.read_csv(r'results\results.csv',low_memory=False)
     if True:
         file_stats = Get_file_stats(df)
         send_status_email(file_stats)
@@ -960,6 +960,19 @@ def download_wda_reg_system_data():
         df['V_NOTFOUND_DAT2'] = pd.to_datetime(df['V_NOTFOUND_DAT2'], errors='coerce')
         df['LR_DATE'] = pd.to_datetime(df['LR_DATE'], errors='coerce')
 
+        df['ERROR_STATUS'] = df['ERROR_STATUS'].apply(lambda x:
+			'Proxy' if '403' in str(x) else
+            'WDA' if str(x) in ['Output Pattern not found','Link Step have no links','Error in loading page :404'] else
+			'Not Found' if 'Not Found' in str(x) else
+            'Proxy' if 'Error' in str(x) or 'Incomplete' in str(x) else
+            'SW' if any(err in str(x) for err in [ 'Exception','java']) else
+			'Error' if any(err in str(x) for err in ['Error', 'Exception', 'Incomplete']) else
+			'' if 'found' in str(x) else
+			'not assigned error'
+		)
+        #if status is found put blank in error status
+        df.loc[df['STATUS'] == 'found', 'ERROR_STATUS'] = ''
+
         # Add is_expired flag based on LR_DATE
         df['is_expired'] = (df['LR_DATE'].isna()) | (df['LR_DATE'] < datetime.now() - timedelta(days=Config.Date_to_expire))
 
@@ -1072,7 +1085,7 @@ def get_wda_reg_aggregated_data():
 
     # Load data from file
     try:
-        df = pd.read_csv(latest_filepath)
+        df = pd.read_csv(latest_filepath,low_memory=False)
 
         # Convert date columns back to datetime
         date_columns = ['LRD2', 'V_NOTFOUND_DAT2', 'LR_DATE', 'download_timestamp']
@@ -1168,7 +1181,7 @@ def download_summary_from_database():
 
 if __name__=="__main__":
 
-    df = pd.read_csv(r'results\results.csv')
+    df = pd.read_csv(r'results\results.csv',low_memory=False)
     if True:
         file_stats = Get_file_stats(df)
         send_status_email(file_stats)

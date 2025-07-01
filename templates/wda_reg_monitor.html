@@ -553,6 +553,7 @@
                                 </div>
                             </div>
                         </div>
+                        
                     </div>
 
 <!-- Second Row Charts -->
@@ -578,6 +579,7 @@
     </div>
 
     <!-- LC Outdated Chart -->
+    <!--
     <div class="col-md-6 d-flex">
         <div class="chart-container flex-fill">
             <div class="chart-header">
@@ -588,6 +590,25 @@
             </div>
             <div class="position-relative h-100">
                 <div id="lcOutdatedChart"></div>
+                <div class="chart-loading">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    -->
+    <div class="col-md-6">
+        <div class="chart-container">
+            <div class="chart-header">
+                <h4>Error Status Distribution</h4>
+                <button class="download-btn" onclick="downloadChart('errorStatusChart')">
+                    <i class="fas fa-download"></i>
+                </button>
+            </div>
+            <div class="position-relative h-100">
+                <div id="errorStatusChart"></div>
                 <div class="chart-loading">
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Loading...</span>
@@ -672,6 +693,9 @@
                             </div>
                         </div>
                         <div class="position-relative h-100">
+                            <button id="selectAllSummaryTimeline" class="btn btn-sm btn-primary">
+                                Select All
+                            </button>
                             <div id="summaryTimelineChart"></div>
                             <div class="chart-loading">
                                 <div class="spinner-border text-primary" role="status">
@@ -814,6 +838,7 @@
             const wdaFlags = filterOptions.wda_flags || [];
             const lcOutdatedOptions = filterOptions.lc_outdated_options || [];
             const csLabels = filterOptions.cs_labels || [];
+            const errorStatusOptions = filterOptions.error_status || [];
 
             // Create filter HTML with Select All buttons
             const filtersHTML = `
@@ -906,6 +931,18 @@
                         ${csLabels.map(label => `<option value="${label}">${label}</option>`).join('')}
                     </select>
                 </div>
+                <div class="filter-wrapper">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0">Error Status</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary select-all-btn" data-target="errorStatusFilter">
+                            Select All
+                        </button>
+                    </div>
+                    <select class="form-select select2" id="errorStatusFilter" multiple>
+                        ${errorStatusOptions.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
+                    </select>
+                </div>
+                
             `;
 
             filterContainer.html(filtersHTML);
@@ -968,6 +1005,8 @@
             const lcOutdatedFilter = $('#lcOutdatedFilter').val();
             const expiredFilter = $('#expiredFilter').val();
             const csFilter = $('#csFilter').val();
+            const errorStatusFilter = $('#errorStatusFilter').val();
+
 
             // Update current filters (preserve existing date filters if they exist)
             currentFilters = {
@@ -979,6 +1018,7 @@
                 lc_outdated_filter: lcOutdatedFilter || [],
                 expired_filter: expiredFilter || [],
                 cs_labels: csFilter || [],
+                error_status: errorStatusFilter || [],
                 ...(currentFilters.date_start && { date_start: currentFilters.date_start }),
                 ...(currentFilters.date_end && { date_end: currentFilters.date_end })
             };
@@ -1182,15 +1222,46 @@
         // Update charts
         function updateCharts() {
             updateStatusChart();
+            updateErrorStatusChart();
             updatePriorityChart();
             updateManufacturerChart();
             //updateWdaFlagChart();
-            updateLcOutdatedChart();
+            //updateLcOutdatedChart();
             updateCsChart();
             updateTimelineChart();
             updateSummaryTimelineChart();
         }
 
+        function updateErrorStatusChart() {
+            if (!currentAggregations.charts || !currentAggregations.charts.error_status) {
+                console.warn('No error status chart data available');
+                return;
+            }
+            const errorStatusData = currentAggregations.charts.error_status;
+            const labels = errorStatusData.labels;
+            const values = errorStatusData.values;
+            const colors = labels.map((_, i) => `rgba(231, 76, 60, ${0.4 + 0.6 * (i / labels.length)})`);
+
+            const data = [{
+                x: labels,
+                y: values,
+                type: 'bar',
+                text: values.map(v => v.toLocaleString()),
+                textposition: 'auto',
+                marker: { color: colors }
+            }];
+
+            const layout = {
+                height: 350,
+                margin: { t: 30, b: 80, l: 60, r: 30 },
+                xaxis: { title: 'Error Status', tickangle: -45 },
+                yaxis: { title: 'Count', tickformat: ',' },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)'
+            };
+
+            Plotly.newPlot('errorStatusChart', data, layout, {responsive: true});
+        }
         // Update status distribution chart
         function updateStatusChart() {
             if (!currentAggregations.charts || !currentAggregations.charts.status) {
@@ -1445,7 +1516,7 @@
         }
 
         // Update summary timeline chart
-        function updateSummaryTimelineChart() {
+    function updateSummaryTimelineChart() {
     if (!currentAggregations.charts || !currentAggregations.charts.summary_timeline) {
         console.warn('No summary timeline chart data available');
         return;
@@ -1453,11 +1524,8 @@
 
     try {
         const rawData = currentAggregations.charts.summary_timeline;
-        console.log("rawData:", rawData);
-
         const summaryArray = Object.values(rawData);
         if (summaryArray.length === 0) {
-            // Show empty state
             const layout = {
                 height: 350,
                 margin: { t: 30, b: 50, l: 60, r: 30 },
@@ -1481,64 +1549,45 @@
             return;
         }
 
-        // Extract sorted dates
-        const sortedDates = summaryArray.map(entry => entry.summary_date);
+        const sortedDates = summaryArray.map(entry => new Date(entry.summary_date));
         const metricKeys = Object.keys(summaryArray[0]).filter(key => key !== "summary_date");
 
-        // Prepare traces for each metric
-        const traces = metricKeys.map(metric => {
-            return {
-                x: sortedDates,
-                y: summaryArray.map(entry => entry[metric]),
-                type: 'scatter',
-                mode: 'lines+markers',
-                name: metric,
-                line: {
-                    width: 2,
-                    shape: 'spline'
-                },
-                marker: {
-                    size: 6,
-                    line: { color: '#fff', width: 1 }
-                },
-                hovertemplate: '<b>%{x}</b><br>' +
-                    `${metric}: %{y:,}<br>` +
-                    '<extra></extra>'
-            };
-        });
+        const traces = metricKeys.map(metric => ({
+            x: sortedDates,
+            y: summaryArray.map(entry => entry[metric]),
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: metric,
+            line: { width: 2, shape: 'spline' },
+            marker: { size: 6, line: { color: '#fff', width: 1 } },
+            hovertemplate: '<b>%{x|%Y-%m-%d}</b><br>' + `${metric}: %{y:,}<br>` + '<extra></extra>'
+        }));
 
         const layout = {
             height: 350,
-            margin: { t: 30, b: 80, l: 60, r: 30 },
+            margin: { t: 50, b: 80, l: 60, r: 30 },
             xaxis: {
-                title: {
-                    text: 'Date',
-                    font: { size: 14, color: '#2c3e50' }
-                },
+                title: { text: 'Date', font: { size: 14, color: '#2c3e50' } },
                 tickangle: -45,
                 tickfont: { size: 10 },
-                type: 'category'
+                type: 'date',
+                tickformat: '%Y-%m-%d'
             },
             yaxis: {
-                title: {
-                    text: 'Count',
-                    font: { size: 14, color: '#2c3e50' }
-                },
+                title: { text: 'Count', font: { size: 14, color: '#2c3e50' } },
                 tickformat: ',',
                 tickfont: { size: 12 }
             },
-            font: {
-                family: 'Arial, sans-serif'
-            },
+            font: { family: 'Arial, sans-serif' },
             paper_bgcolor: 'rgba(0,0,0,0)',
             plot_bgcolor: 'rgba(0,0,0,0)',
             legend: {
                 orientation: 'h',
                 x: 0.5,
                 xanchor: 'center',
-                y: -0.2
+                y: 1.15
             },
-            hovermode: 'x unified'
+            hovermode: 'closest'
         };
 
         const config = {
@@ -1548,11 +1597,49 @@
             displaylogo: false
         };
 
-        Plotly.newPlot('summaryTimelineChart', traces, layout, config);
+        Plotly.newPlot('summaryTimelineChart', traces, layout, config).then(gd => {
+
+            // Ctrl-click logic to deselect all then select clicked
+            gd.on('plotly_legendclick', function(eventData) {
+                if (eventData.event.ctrlKey) {
+                    const update = { visible: [] };
+                    for (let i = 0; i < gd.data.length; i++) {
+                        update.visible[i] = 'legendonly';
+                    }
+                    update.visible[eventData.curveNumber] = true;
+                    Plotly.update(gd, update);
+                    return false;
+                }
+            });
+
+            // Button click to select all traces
+            document.getElementById('selectAllSummaryTimeline').addEventListener('click', () => {
+                const update = { visible: [] };
+                for (let i = 0; i < gd.data.length; i++) {
+                    update.visible[i] = true;
+                }
+                Plotly.update(gd, update);
+            });
+
+            // Keyboard shortcut (Ctrl+A) to select all traces
+            document.addEventListener('keydown', function(e) {
+                if (e.ctrlKey && e.key === 'a') {
+                    e.preventDefault(); // prevent default select all behaviour
+                    const update = { visible: [] };
+                    for (let i = 0; i < gd.data.length; i++) {
+                        update.visible[i] = true;
+                    }
+                    Plotly.update(gd, update);
+                }
+            });
+
+        });
+
     } catch (error) {
         console.error("Failed to render summary timeline chart:", error);
     }
 }
+
 
         // Update manufacturer distribution chart
         function updateManufacturerChart() {
