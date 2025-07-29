@@ -1173,6 +1173,7 @@ def download_summary_from_database():
         df = pd.DataFrame(result.fetchall(), columns=result.keys())
     engine.dispose()
     path = os.path.join(Config.result_path,'summary.csv')
+    df = df.sort_values(by='summary_date')
     df.to_csv(path, index=False)
     return df
 

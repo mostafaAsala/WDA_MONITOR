@@ -1543,6 +1543,7 @@ def calculate_wda_reg_aggregations(df:pd.DataFrame):
 
         # Get summary table data for the summary timeline chart
         summary_timeline_data = get_summary()
+        #summary_timeline_data = summary_timeline_data.groupby('summary_date')['count'].sum().reset_index().sort_values('summary_date')
         summary_timeline_data = summary_timeline_data.to_dict('records')
         #print("summary_timeline_data: ",summary_timeline_data)
         print("time for summary timeline data: ",time.time()-time_start)
@@ -1690,7 +1691,6 @@ def get_wda_reg_data():
 
         # Pre-calculate aggregated data for visualizations
         aggregated_data = calculate_wda_reg_aggregations(df)
-        print("aggregated_data: ",aggregated_data)
         app.logger.info(f'Successfully served WDA_Reg aggregations from cache ({len(df)} records processed)')
 
         return jsonify({
@@ -1859,7 +1859,7 @@ def upload_to_monitor():
 		
         date_str = datetime.now().date()
         new_filename = f"{file_name}@{date_str}.txt"
-        file_path = os.path.join(Config.WORK_FOLDER, new_filename)
+        file_path = os.path.join(Config.AMAZON_FOLDER, new_filename)
         file = df[['PART_NUMBER','MAN_NAME','MODULE_NAME']].copy()
         upload_file_to_amazon(file,new_filename)
         try:
@@ -1969,7 +1969,7 @@ def download_summary_timeline_data():
 
 def query_wda_reg_raw_data_with_filters(filters):
     """Query database directly for raw WDA_Reg data with filters applied"""
-    
+    print(filters)
 
     engine = create_db_engine()
 
@@ -2048,7 +2048,7 @@ def query_wda_reg_raw_data_with_filters(filters):
                     )
 
                 select
-                    x.pn,
+                    x.pn as PART_NUMBER,
                     z.man_name,
                     y.module_name,
                     y.wda_flag,
@@ -2104,6 +2104,7 @@ def query_wda_reg_raw_data_with_filters(filters):
             where_conditions.append(f"x.lc_outdated IN ({placeholders})")
             for i, lc_outdated in enumerate(filters['lc_outdated_filter']):
                 query_params[f'lc_outdated_{i}'] = lc_outdated
+        #
 
         # Add date filters if provided
         if filters.get('date_start'):
@@ -2113,10 +2114,12 @@ def query_wda_reg_raw_data_with_filters(filters):
         if filters.get('date_end'):
             where_conditions.append("x.LR_date <= TO_DATE(:date_end, 'YYYY-MM-DD')")
             query_params['date_end'] = filters['date_end']
+        
+        """
         if filters.get('error_status'):
             where_conditions.append("x.error_status IN (:error_status)")
             query_params['error_status'] = filters['error_status']
-            
+            """
         # Add CS labels filter if provided
         if filters.get('cs_labels') and len(filters['cs_labels']) > 0:
             cs_conditions = []
@@ -2133,7 +2136,7 @@ def query_wda_reg_raw_data_with_filters(filters):
 
         # Add ORDER BY for consistent results
         #final_query += " ORDER BY z.man_name, y.module_name, x.Prty, x.status"
-
+        print("final_query: ",final_query)
         app.logger.info(f'Executing raw data query with {len(query_params)} filter parameters')
 
         with engine.connect() as connection:
@@ -2146,6 +2149,25 @@ def query_wda_reg_raw_data_with_filters(filters):
         df['V_NOTFOUND_DAT2'] = pd.to_datetime(df['V_NOTFOUND_DAT2'], errors='coerce')
         df['LR_DATE'] = pd.to_datetime(df['LR_DATE'], errors='coerce')
 
+        # calculate error status
+        df['ERROR_STATUS'] = df['ERROR_STATUS'].apply(lambda x:
+			'Proxy' if '403' in str(x) else
+            'WDA' if str(x) in ['Output Pattern not found','Link Step have no links','Error in loading page :404'] else
+			'Not Found' if 'Not Found' in str(x) else
+            'Proxy' if 'Error' in str(x) or 'Incomplete' in str(x) else
+            'SW' if any(err in str(x) for err in [ 'Exception','java']) else
+			'Error' if any(err in str(x) for err in ['Error', 'Exception', 'Incomplete']) else
+			'' if 'found' in str(x) else
+			'not assigned error'
+		)
+
+        #if status is found put blank in error status
+        df.loc[df['STATUS'] == 'found', 'ERROR_STATUS'] = ''
+        
+        # Add error status filter
+        if filters.get('error_status') and len(filters['error_status']) > 0:
+            df = df[df['ERROR_STATUS'].isin(filters['error_status'])]
+        
         # Add is_expired flag based on LR_DATE
         df['is_expired'] = (df['LR_DATE'].isna()) | (df['LR_DATE'] < datetime.now() - timedelta(days=Config.Date_to_expire))
 
@@ -2219,6 +2241,7 @@ def apply_wda_reg_filters(df, filters):
         mask = filtered_df['CS_clean'].str.contains(pattern, regex=True, na=False)
         filtered_df = filtered_df[mask]
     print("time for filter cs labels: ",time.time()-start_time)
+
 
 
 
@@ -2520,18 +2543,22 @@ def weekly_scheduled_upload_task():
 						continue
 
 					# Get only expired parts
-					df = pd.read_csv(file_path, sep='\t',low_memory=False)
+					df = pd.read_csv(file_path, sep='\t',low_memory=False,encoding='mbcs')
 					today = datetime.now().date()
-
+					print(df.columns)
 					# Filter for expired parts
-					df_filtered = df[df['stop_monitor_date'].notna()]
+					df, filename = Download_results([filename])
+					print(df.head())
+					"""df_filtered = df[df['stop_monitor_date'].notna()]
 					df_filtered['stop_monitor_date'] = pd.to_datetime(df_filtered['stop_monitor_date']).dt.date
-					df_expired = df_filtered[df_filtered['stop_monitor_date'] < today]
-
+					df_expired = df_filtered[df_filtered['stop_monitor_date'] < today]"""
+					df_expired = df[df['is_expired']==True]
 					if df_expired.empty:
 						app.logger.info(f'No expired parts found in {filename}')
 						continue
-
+					print("Found Parts: ",df.columns)
+					
+                    
 					# Upload to Amazon
 					timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 					upload_filename = f'{filename}_expired_{timestamp}'
@@ -2545,10 +2572,6 @@ def weekly_scheduled_upload_task():
 		app.logger.error(f'Error in weekly scheduled upload task: {str(e)}')
 	finally:
 		amazon_upload_in_progress = False
-
-
-
-
 
 
 
@@ -2599,7 +2622,7 @@ class TaskConfig:
     }
     SCHEDULER_JOB_DEFAULTS = {
         'coalesce': True,  # Combine missed runs into one
-        'max_instances': 2,  # Allow at most 2 concurrent instances
+        'max_instances': 5,  # Allow at most 2 concurrent instances
         'misfire_grace_time': 3600  # Allow 1-hour delay execution
     }
     JOBS = [
@@ -2607,8 +2630,8 @@ class TaskConfig:
             'id': 'daily_task',  # Unique Job ID
             'func': 'app:daily_task',  # Function to run
             'trigger': 'cron',
-            'hour': 1,
-            'minute': 0
+            'hour': 14,
+            'minute': 54
         },
 		{
             'id': 'download_matrix_task',  # Unique Job ID
@@ -2629,14 +2652,14 @@ class TaskConfig:
             'func': 'app:weekly_scheduled_upload_task',  # Function to run
             'trigger': 'cron',
             'day_of_week': 'fri',  # Run every Monday
-            'hour': 3,  # At 3 AM
-            'minute': 0
+            'hour': 5,  # At 3 AM
+            'minute': 53
         },
         {
             'id': 'daily_summary',  # Unique Job ID
             'func': 'app:daily_summary_calculation',  # Function to run
             'trigger': 'cron',
-            'hour': 10,  # At 5 AM daily
+            'hour': 19,  # At 5 AM daily
             'minute': 36
         }
     ]

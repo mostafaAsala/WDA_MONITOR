@@ -13,6 +13,7 @@ class Config:
     print(SQLALCHEMY_DATABASE_URI,DB_URI,list(os.environ))
     print("--------------------------------------------------------")
     WORK_FOLDER = "Data"
+    AMAZON_FOLDER = 'Data_amazon'
     UPLOAD_FOLDER = "Upload"
     result_path = 'results'
     shared_path = r'\\10.199.104.125\DirectFeed\Mostafa\WDA_MONITOR'
