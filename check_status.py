@@ -660,7 +660,8 @@ def Get_file_stats(global_df):
     global_df['status'] = global_df['status'].fillna('-')
     global_df['prty'] = global_df['prty'].fillna('-')
     global_df['table_name'] = global_df['table_name'].fillna('-')
-
+    print(global_df.dtypes)
+    global_df = global_df.drop(columns=['man_id.1', 'module_id.1'])
     df = global_df.groupby(
         ['man', 'module', 'file_id', 'status', 'last_run_date',
         'table_name', 'prty', 'file_name', 'is_expired'], dropna=False
@@ -818,7 +819,10 @@ def daily_check_all():
     df, file_name = Download_results(files_string, daily_export)
     #df = pd.read_csv(r'results\results.csv')
     if True:
-        file_stats = Get_file_stats(df)
+        try:
+            file_stats = Get_file_stats(df)
+        except Exception as e:
+            print("error", e)
         #send_status_email(file_stats)
 
 def daily_check_all2():
@@ -1185,4 +1189,3 @@ if __name__=="__main__":
     df = pd.read_csv(r'results\results.csv',low_memory=False)
     if True:
         file_stats = Get_file_stats(df)
-        send_status_email(file_stats)
