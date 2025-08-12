@@ -25,7 +25,7 @@ import hashlib
 print("import hashlib")
 from Parts_Upload import main_upload_parts, main_delete_file
 print("from Parts_Upload import main_upload_parts, main_delete_file")
-from check_status import Get_status, Download_results, download_summary_from_database, get_status_statistics, daily_check_all, get_wda_reg_aggregated_data, download_wda_reg_system_data,create_db_engine,run_daily_summary
+from check_status import Get_status, Download_results, download_summary_from_database, get_status_statistics, daily_check_all, get_wda_reg_aggregated_data, download_wda_reg_system_data,create_db_engine,run_daily_summary, process_loggers, log_process_start, log_process_end, log_step, log_error_with_context, setup_csv_logger
 
 print("from check_status import Get_status, Download_results, get_status_statistics, daily_check_all")
 from config import Config
@@ -2505,37 +2505,86 @@ def download_not_approved():
         return jsonify({'error': str(e)}), 500
 
 def daily_task():
-	daily_check_all()
+	"""Scheduled daily task for status checking"""
+	logger = process_loggers['daily_task']
+
+	log_process_start(logger, "daily_task_scheduler")
+
+	try:
+		log_step(logger, "Execute daily check all process", subprocess_name="daily_check_execution")
+		daily_check_all()
+
+		log_process_end(logger, "daily_task_scheduler", success=True)
+
+	except Exception as e:
+		log_process_end(logger, "daily_task_scheduler", success=False, error=str(e))
+		log_error_with_context(logger, e, "Scheduled daily task", subprocess_name="error_handling")
+		app.logger.error(f'Error in daily task: {str(e)}')
 
 # Config for APScheduler
 def download_matrix_task():
+	"""Scheduled task for downloading matrix data"""
 	global matrix_df
-	download_matrix_toFile()
-	matrix_df = pd.read_csv(r'Static Data\matrix.csv')
+	logger = process_loggers['matrix_download']
+
+	log_process_start(logger, "download_matrix_task")
+
+	try:
+		log_step(logger, "Download matrix data from external source", subprocess_name="matrix_download_external")
+		download_matrix_toFile()
+
+		log_step(logger, "Load matrix data into memory", subprocess_name="matrix_load_memory")
+		matrix_df = pd.read_csv(r'Static Data\matrix.csv')
+
+		# Log success with details
+		record = logger.makeRecord(
+			logger.name, logging.INFO, '', 0,
+			f"Matrix data loaded successfully - {len(matrix_df)} rows",
+			(), None, func='matrix_load_memory'
+		)
+		record.subprocess = 'matrix_load_memory'
+		record.details = f'rows_loaded={len(matrix_df)}'
+		logger.handle(record)
+
+		log_process_end(logger, "download_matrix_task", success=True,
+		               rows_loaded=len(matrix_df))
+
+	except Exception as e:
+		log_process_end(logger, "download_matrix_task", success=False, error=str(e))
+		log_error_with_context(logger, e, "Matrix download task", subprocess_name="error_handling")
+		app.logger.error(f'Error in matrix download task: {str(e)}')
 
 def weekly_scheduled_upload_task():
 	"""
 	Weekly task to upload expired parts from scheduled files to Amazon
 	"""
 	global amazon_upload_in_progress, scheduled_files
+	logger = process_loggers['weekly_upload']
 
-	app.logger.info(f'Running weekly scheduled upload for {len(scheduled_files)} files')
+	log_process_start(logger, "weekly_scheduled_upload_task",
+	                 scheduled_files_count=len(scheduled_files))
 
 	if not scheduled_files:
-		app.logger.info('No files scheduled for upload')
+		logger.info('No files scheduled for upload')
+		log_process_end(logger, "weekly_scheduled_upload_task", success=True,
+		               result="No files to process")
 		return
 
 	if amazon_upload_in_progress:
-		app.logger.warning('Another upload to Amazon is in progress. Skipping scheduled upload.')
+		logger.warning('Another upload to Amazon is in progress. Skipping scheduled upload.')
+		log_process_end(logger, "weekly_scheduled_upload_task", success=False,
+		               error="Upload already in progress")
 		return
 
 	try:
 		with amazon_upload_lock:
 			amazon_upload_in_progress = True
 
+			log_step(logger, f"Process {len(scheduled_files)} scheduled files for upload", subprocess_name="file_processing_init")
+
 			for filename in scheduled_files:
 				try:
-					app.logger.info(f'Processing scheduled upload for {filename}')
+					logger.info(f'Processing scheduled upload for {filename}')
 					file_path = os.path.join(Config.WORK_FOLDER, filename)
 
 					if not os.path.exists(file_path):
@@ -2579,26 +2628,64 @@ def wda_reg_system_download_task():
 	"""
 	Daily task to download WDA_Reg system aggregated data and reload into memory
 	"""
+	logger = process_loggers['wda_system_download']
+
+	log_process_start(logger, "wda_reg_system_download_task")
+
 	try:
-		app.logger.info('Running daily WDA_Reg system data download task')
+		log_step(logger, "Download WDA_Reg system data from external source", subprocess_name="wda_data_download")
 		download_wda_reg_system_data()
 
-		# Reload data into memory cache
+		log_step(logger, "Reload WDA_Reg data into memory cache", subprocess_name="wda_data_reload")
 		load_wda_reg_system_data()
 
-		app.logger.info('WDA_Reg system data download task completed successfully and reloaded into memory')
+		# Log completion with subprocess name
+		record = logger.makeRecord(
+			logger.name, logging.INFO, '', 0,
+			'WDA_Reg system data download task completed successfully and reloaded into memory',
+			(), None, func='wda_data_reload'
+		)
+		record.subprocess = 'wda_data_reload'
+		record.details = 'task_completed_successfully'
+		logger.handle(record)
+
+		log_process_end(logger, "wda_reg_system_download_task", success=True)
+
 	except Exception as e:
+		log_process_end(logger, "wda_reg_system_download_task", success=False, error=str(e))
+		log_error_with_context(logger, e, "WDA_Reg system download task", subprocess_name="error_handling")
 		app.logger.error(f'Error in WDA_Reg system data download task: {str(e)}')
 # 🔹 Define TaskConfig
 
 
 def daily_summary_calculation():
-      try:
-            app.logger.info('Running daily summary calculation task')
-            run_daily_summary()
-            app.logger.info('Daily summary calculation task completed successfully')
-      except Exception as e:
-            app.logger.error(f'Error in daily summary calculation task: {str(e)}')
+	"""
+	Daily task to calculate and store summary statistics
+	"""
+	logger = process_loggers['daily_summary']
+
+	log_process_start(logger, "daily_summary_calculation")
+
+	try:
+		log_step(logger, "Execute daily summary calculations", subprocess_name="summary_calculation")
+		run_daily_summary()
+
+		# Log completion with subprocess name
+		record = logger.makeRecord(
+			logger.name, logging.INFO, '', 0,
+			'Daily summary calculation completed successfully',
+			(), None, func='summary_completion'
+		)
+		record.subprocess = 'summary_completion'
+		record.details = 'calculation_completed'
+		logger.handle(record)
+
+		log_process_end(logger, "daily_summary_calculation", success=True)
+
+	except Exception as e:
+		log_process_end(logger, "daily_summary_calculation", success=False, error=str(e))
+		log_error_with_context(logger, e, "Daily summary calculation task", subprocess_name="error_handling")
+		app.logger.error(f'Error in daily summary calculation: {str(e)}')
 
 
 

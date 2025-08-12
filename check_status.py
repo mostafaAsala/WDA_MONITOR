@@ -39,29 +39,156 @@ def set_redemption_registry():
 
 
 
-# Setup logging
-def setup_logger():
-    logger = logging.getLogger('status_logger')
-    logger.setLevel(logging.INFO)
+# CSV-based logging system for subprocess monitoring
+import csv
+from threading import Lock
+
+# Global lock for thread-safe CSV writing
+csv_lock = Lock()
+
+def setup_csv_logger(process_name, log_level=logging.INFO):
+    """
+    Sets up a CSV-based logger for each subprocess with separate log files
+    """
+    logger = logging.getLogger(f'{process_name}_csv_logger')
+    logger.setLevel(log_level)
+
+    # Clear existing handlers to avoid duplicates
+    logger.handlers.clear()
 
     # Create logs directory if it doesn't exist
-    log_filename = os.path.join(Config.shared_path, f'status_log_{datetime.now().strftime("%Y-%m-%d")}.log')
+    logs_dir = 'logs'
+    if not os.path.exists(logs_dir):
+        os.makedirs(logs_dir)
 
-    # Create file handler
-    file_handler = logging.FileHandler(log_filename)
-    file_handler.setLevel(logging.INFO)
+    # Create CSV log file for this process (without date in filename)
+    csv_log_file = os.path.join(logs_dir, f'{process_name}.csv')
 
-    # Create formatter
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(formatter)
+    # Initialize CSV file with headers if it doesn't exist
+    if not os.path.exists(csv_log_file):
+        with open(csv_log_file, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(['timestamp', 'parent_process', 'subprocess', 'level', 'message', 'details'])
 
-    # Add handler to logger
-    logger.addHandler(file_handler)
+    # Custom CSV handler
+    class CSVHandler(logging.Handler):
+        def __init__(self, csv_file, process_name):
+            super().__init__()
+            self.csv_file = csv_file
+            self.process_name = process_name
+
+        def emit(self, record):
+            try:
+                with csv_lock:
+                    with open(self.csv_file, 'a', newline='', encoding='utf-8') as f:
+                        writer = csv.writer(f)
+                        # Extract subprocess from record attributes
+                        subprocess = getattr(record, 'subprocess', record.funcName or 'unknown')
+                        details = getattr(record, 'details', '')
+
+                        writer.writerow([
+                            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                            self.process_name,
+                            subprocess,
+                            record.levelname,
+                            record.getMessage(),
+                            details
+                        ])
+            except Exception:
+                self.handleError(record)
+
+    csv_handler = CSVHandler(csv_log_file, process_name)
+    csv_handler.setLevel(log_level)
+
+    # Also add console handler for important messages
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.WARNING)
+    console_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(console_formatter)
+
+    logger.addHandler(csv_handler)
+    logger.addHandler(console_handler)
 
     return logger
 
-# Initialize logger
-status_logger = setup_logger()
+def log_process_start(logger, process_name, **kwargs):
+    """Log the start of a process with parameters"""
+    params_str = ', '.join([f'{k}={v}' for k, v in kwargs.items()]) if kwargs else ''
+    record = logger.makeRecord(
+        logger.name, logging.INFO, '', 0,
+        f"PROCESS START: {process_name}",
+        (), None, func='process_lifecycle'
+    )
+    record.subprocess = 'process_lifecycle'
+    record.details = params_str
+    logger.handle(record)
+
+def log_process_end(logger, process_name, success=True, **kwargs):
+    """Log the end of a process with results"""
+    status = "SUCCESS" if success else "FAILED"
+    results_str = ', '.join([f'{k}={v}' for k, v in kwargs.items()]) if kwargs else ''
+    record = logger.makeRecord(
+        logger.name, logging.INFO, '', 0,
+        f"PROCESS END: {process_name} - {status}",
+        (), None, func='process_lifecycle'
+    )
+    record.subprocess = 'process_lifecycle'
+    record.details = results_str
+    logger.handle(record)
+
+def log_step(logger, step_name, subprocess_name=None, details=None):
+    """Log individual steps within a process"""
+    record = logger.makeRecord(
+        logger.name, logging.INFO, '', 0,
+        f"STEP: {step_name}",
+        (), None, func=subprocess_name or 'process_step'
+    )
+    record.subprocess = subprocess_name or 'process_step'
+    record.details = details or ''
+    logger.handle(record)
+
+def log_error_with_context(logger, error, context=None, subprocess_name=None):
+    """Log errors with full context and traceback"""
+    record = logger.makeRecord(
+        logger.name, logging.ERROR, '', 0,
+        f"ERROR in {context or 'unknown context'}: {str(error)}",
+        (), None, func=subprocess_name or 'error_handler'
+    )
+    record.subprocess = subprocess_name or 'error_handling'
+    record.details = traceback.format_exc()
+    logger.handle(record)
+
+# Setup CSV logging for each major process
+def setup_all_process_loggers():
+    """Initialize CSV loggers for all major processes"""
+    loggers = {}
+
+    # Main processes - each gets its own CSV log file
+    loggers['status_check'] = setup_csv_logger('status_check')
+    loggers['file_upload'] = setup_csv_logger('file_upload')
+    loggers['amazon_upload'] = setup_csv_logger('amazon_upload')
+    loggers['daily_task'] = setup_csv_logger('daily_task')
+    loggers['matrix_download'] = setup_csv_logger('matrix_download')
+    loggers['wda_system_download'] = setup_csv_logger('wda_system_download')
+    loggers['weekly_upload'] = setup_csv_logger('weekly_upload')
+    loggers['daily_summary'] = setup_csv_logger('daily_summary')
+    loggers['automation_process'] = setup_csv_logger('automation_process')
+    loggers['database_operations'] = setup_csv_logger('database_operations')
+    loggers['file_delete'] = setup_csv_logger('file_delete')
+    loggers['file_scan'] = setup_csv_logger('file_scan')
+
+    return loggers
+
+# Initialize all process loggers
+process_loggers = setup_all_process_loggers()
+
+# Also create a backward compatibility function for the old setup_process_logger
+def setup_process_logger(process_name, log_level=logging.INFO):
+    """Backward compatibility wrapper for setup_csv_logger"""
+    return setup_csv_logger(process_name, log_level)
+
+# Backward compatibility - keep the original status_logger
+status_logger = process_loggers['status_check']
 
 # Create a file lock for results.csv
 results_lock = filelock.FileLock(os.path.join(Config.result_path, "results.csv.lock"))
@@ -141,38 +268,54 @@ def check_valid_file(files_list=None, ignore_date=True):
 
 
 def Get_status(files_list=None, ignore_date=True, daily_export=False):
+    # Use dedicated logger for status checking process
+    logger = process_loggers['status_check']
+
+    # Log process start
+    log_process_start(logger, "Get_status",
+                     files_list=files_list,
+                     ignore_date=ignore_date,
+                     daily_export=daily_export)
+
     engine = create_db_engine()
     try:
-        status_logger.info("Starting Get_status function")
+        log_step(logger, "Initialize parameters and validate inputs")
+
         if files_list is None:
             files_list = os.listdir(Config.WORK_FOLDER)
-            status_logger.info(f"No files provided, using all files in work folder: {len(files_list)} files")
+            logger.info(f"No files provided, using all files in work folder: {len(files_list)} files")
         else:
-            status_logger.info(f"Processing specific files: {files_list}")
+            logger.info(f"Processing specific files: {files_list}")
 
         files_string = str(tuple(files_list))
         if len(files_list)==1:
             files_string = files_string[0:-2]+')'
 
-        status_logger.info(f"Ignore date: {ignore_date}, Daily export: {daily_export}")
+        logger.info(f"Files string for query: {files_string}")
+        logger.info(f"Configuration - Ignore date: {ignore_date}, Daily export: {daily_export}")
+
+        log_step(logger, "Setup date conditions for query")
 
         if ignore_date:
             check_date = ""
-            status_logger.info("Date check disabled")
+            logger.info("Date check disabled - will process all files regardless of last check date")
         else:
             check_date = "and NVL(TO_CHAR(last_check_date,'DD-MON-YYYY'), TO_DATE('01-JAN-1900', 'DD-MON-YYYY')) < TO_CHAR(sysdate,'DD-MON-YYYY')"
             check_date = SQLQueries.q_add_check_date
-            status_logger.info("Using date check condition")
+            logger.info("Date check enabled - will only process files not checked today")
 
         if daily_export:
             date_condition = "and NVL(stop_monitor_date, TO_DATE('01-JAN-2999', 'DD-MON-YYYY')) > sysdate"
             date_condition = SQLQueries.q_stop_monitor
-            status_logger.info("Using daily export condition")
+            logger.info("Daily export mode - using stop monitor date condition")
         else:
             date_condition = ""
             date_condition = "and NVL(stop_monitor_date, TO_DATE('01-JAN-2999', 'DD-MON-YYYY')) > sysdate"
             date_condition = SQLQueries.q_stop_monitor
-        status_logger.info(f"Calculating Status for files: {files_string}")
+            logger.info("Regular mode - using stop monitor date condition")
+
+        log_step(logger, "Prepare status calculation query",
+                details=f"Files: {len(files_list)}, Check date condition: {'Enabled' if not ignore_date else 'Disabled'}")
 
         query = text(f"""
 
@@ -334,42 +477,66 @@ def Get_status(files_list=None, ignore_date=True, daily_export=False):
             """
 
         # Execute queries within a transaction
+        log_step(logger, "Execute database transaction for status updates")
+
         with engine.begin() as connection:
             try:
-                status_logger.info("Starting Not Found status update query execution...")
+                log_step(logger, "Execute main status calculation query")
+                start_time = datetime.now()
                 connection.execute(text(query))
-                status_logger.info("Status calculation completed successfully")
+                query_duration = (datetime.now() - start_time).total_seconds()
+                logger.info(f"Status calculation query completed in {query_duration:.2f} seconds")
 
-                status_logger.info("Updating last check dates...")
+                log_step(logger, "Update last check dates for processed files")
+                start_time = datetime.now()
                 connection.execute(text(update_files_query))
-                status_logger.info("Last check dates updated successfully")
+                update_duration = (datetime.now() - start_time).total_seconds()
+                logger.info(f"Last check dates updated in {update_duration:.2f} seconds")
+
                 connection.commit()
+                logger.info("Database transaction committed successfully")
+
             except Exception as e:
                 error_msg = f"Error in database transaction: {str(e)}"
-                status_logger.error(error_msg)
-                status_logger.error(traceback.format_exc())
+                log_error_with_context(logger, e, "Database transaction for status updates")
                 raise Exception(error_msg)
 
-        status_logger.info("Starting Found_parts_Status processing")
+        log_step(logger, "Process found parts status updates")
+        start_time = datetime.now()
         Found_parts_Status(engine=engine, files_string=files_string)
-        status_logger.info("Found_parts_Status processing completed successfully")
+        found_parts_duration = (datetime.now() - start_time).total_seconds()
+        logger.info(f"Found_parts_Status processing completed in {found_parts_duration:.2f} seconds")
 
-        status_logger.info("Get_status function completed successfully")
+        # Log successful completion
+        log_process_end(logger, "Get_status", success=True,
+                       files_processed=len(files_list),
+                       files_string=files_string,
+                       daily_export=daily_export)
+
         return files_string, daily_export
 
     except Exception as e:
-        error_msg = f"Error in Get_status: {str(e)}"
-        status_logger.error(error_msg)
-        status_logger.error(traceback.format_exc())
+        # Log failed completion
+        log_process_end(logger, "Get_status", success=False,
+                       error=str(e),
+                       files_list=files_list)
+        log_error_with_context(logger, e, f"Get_status function with files: {files_list}")
         raise
     finally:
         engine.dispose()
-        status_logger.info("Database connection disposed")
+        logger.info("Database connection disposed")
 
 
 def Found_parts_Status(engine, files_string):
+    # Use dedicated logger for database operations
+    logger = process_loggers['database_operations']
+
+    # Log process start
+    log_process_start(logger, "Found_parts_Status", files_string=files_string)
+
     try:
-        status_logger.info("Starting Found_parts_Status function")
+        log_step(logger, "Fetch file IDs for processing")
+
         with engine.begin() as connection:
             file_id_query = text(f"""
                 SELECT id
@@ -377,19 +544,32 @@ def Found_parts_Status(engine, files_string):
                 WHERE file_name IN {files_string}
             """)
 
-            status_logger.info("Fetching file IDs from database")
+            start_time = datetime.now()
             file_ids = connection.execute(file_id_query).fetchall()
             file_ids = [row[0] for row in file_ids]
+            query_duration = (datetime.now() - start_time).total_seconds()
+
+            logger.info(f"File ID query completed in {query_duration:.2f} seconds")
 
             if not file_ids:
-                status_logger.warning("No matching file IDs found for the given file names.")
+                logger.warning("No matching file IDs found for the given file names.")
+                log_process_end(logger, "Found_parts_Status", success=True,
+                               result="No files to process")
                 return
 
-            status_logger.info(f"Processing {len(file_ids)} files")
-            for file_id in file_ids:
+            logger.info(f"Found {len(file_ids)} files to process: {file_ids}")
+
+            log_step(logger, "Process each file for found parts status",
+                    details=f"Total files: {len(file_ids)}")
+
+            for file_index, file_id in enumerate(file_ids, 1):
                 try:
-                    status_logger.info(f"Processing file ID: {file_id}")
+                    logger.info(f"Processing file {file_index}/{len(file_ids)} - File ID: {file_id}")
+                    file_start_time = datetime.now()
+
                     with engine.begin() as file_connection:
+                        log_step(logger, f"Fetch modules for file ID {file_id}")
+
                         part_query = text(f"""
                             SELECT DISTINCT
                                 m.module_name,
@@ -407,20 +587,30 @@ def Found_parts_Status(engine, files_string):
                                 AND p.file_id = :file_id
                         """)
 
-                        status_logger.info(f"Fetching modules for file ID: {file_id}")
+                        query_start_time = datetime.now()
                         result = file_connection.execute(part_query, {"file_id": file_id}).fetchall()
-                        status_logger.info(f"Found {len(result)} modules to process for file ID: {file_id}")
+                        query_duration = (datetime.now() - query_start_time).total_seconds()
 
-                        percent = 0
-                        for rec in result:
+                        logger.info(f"Found {len(result)} modules for file ID {file_id} in {query_duration:.2f} seconds")
+
+                        if not result:
+                            logger.warning(f"No modules found for file ID {file_id}")
+                            continue
+
+                        log_step(logger, f"Process {len(result)} modules for file ID {file_id}")
+
+                        for module_index, rec in enumerate(result, 1):
                             try:
                                 module_name = rec[0]
                                 man_id = rec[1]
                                 module_id = rec[2]
                                 table_name = f"updatesys.tbl_{man_id}_{module_id}@new3_n"
 
-                                status_logger.info(f"Processing module: {module_name}, table: {table_name}, progress: {percent/len(result)*100:.2f}%")
-                                percent += 1
+                                progress_pct = (module_index / len(result)) * 100
+                                logger.info(f"Processing module {module_index}/{len(result)}: {module_name} "
+                                          f"(table: {table_name}) - {progress_pct:.1f}% complete")
+
+                                module_start_time = datetime.now()
 
                                 v_sql = f"""
                                     MERGE INTO parts tgt
@@ -528,37 +718,46 @@ def Found_parts_Status(engine, files_string):
                                 """
 
                                 try:
-                                    status_logger.info(f"Executing v_sql for module {module_name}")
+                                    logger.info(f"Executing primary SQL query for module {module_name}")
+                                    sql_start_time = datetime.now()
                                     file_connection.execute(text(v_sql))
+                                    sql_duration = (datetime.now() - sql_start_time).total_seconds()
+                                    logger.info(f"Successfully executed primary SQL for module {module_name} in {sql_duration:.2f} seconds")
 
-                                    status_logger.info(f"Successfully executed v_sql for module {module_name}")
                                 except Exception as e:
-                                    status_logger.error(f"Error executing v_sql for module {module_name}, table {table_name}: {e}")
-                                    status_logger.info("Attempting to execute v_sql2...")
+                                    logger.warning(f"Primary SQL failed for module {module_name}, table {table_name}: {e}")
+                                    logger.info("Attempting fallback SQL query (v_sql2)...")
                                     try:
+                                        sql_start_time = datetime.now()
                                         file_connection.execute(text(v_sql2))
+                                        sql_duration = (datetime.now() - sql_start_time).total_seconds()
+                                        logger.info(f"Successfully executed fallback SQL for module {module_name} in {sql_duration:.2f} seconds")
 
-                                        status_logger.info(f"Successfully executed v_sql2 for module {module_name}")
                                     except Exception as e2:
-                                        print(traceback.format_exc())
-                                        status_logger.error(f"Error executing v_sql2 for module {module_name}, table {table_name}: {e2}")
+                                        log_error_with_context(logger, e2,
+                                                             f"Both SQL queries failed for module {module_name}, table {table_name}")
                                         raise
+
                             except Exception as e:
-                                status_logger.error(f"Error processing record: {str(e)}")
+                                log_error_with_context(logger, e, f"Error processing module {module_name}")
                                 continue
 
                         file_connection.commit()
-                    status_logger.info(f"Completed processing file ID: {file_id}")
-                    print(traceback.format_exc())
+                        file_duration = (datetime.now() - file_start_time).total_seconds()
+                        logger.info(f"Completed processing file ID {file_id} in {file_duration:.2f} seconds")
+
                 except Exception as e:
-                    status_logger.error(f"Error processing file ID {file_id}: {str(e)}")
-                    print(traceback.format_exc())
+                    log_error_with_context(logger, e, f"Error processing file ID {file_id}")
                     continue
 
-        status_logger.info("Found_parts_Status function completed successfully")
+        # Log successful completion
+        log_process_end(logger, "Found_parts_Status", success=True,
+                       files_processed=len(file_ids))
+
     except Exception as e:
-        status_logger.error(f"Error in Found_parts_Status: {str(e)}")
-        status_logger.error(traceback.format_exc())
+        # Log failed completion
+        log_process_end(logger, "Found_parts_Status", success=False, error=str(e))
+        log_error_with_context(logger, e, "Found_parts_Status function")
         raise
 
 def fetch_results_from_database(files_list = None, daily_export=False):
@@ -814,25 +1013,65 @@ def send_status_email(file_stats):
 
 
 def daily_check_all():
+    """Daily automated task for checking all files status"""
+    logger = process_loggers['daily_task']
 
-    files_string , daily_export = Get_status(ignore_date = False,daily_export=True)
-    df, file_name = Download_results(files_string, daily_export)
-    #df = pd.read_csv(r'results\results.csv')
-    if True:
+    log_process_start(logger, "daily_check_all")
+
+    try:
+        log_step(logger, "Execute daily status check")
+        files_string, daily_export = Get_status(ignore_date=False, daily_export=True)
+
+        log_step(logger, "Download and process results")
+        df, file_name = Download_results(files_string, daily_export)
+
+        log_step(logger, "Generate file statistics")
         try:
             file_stats = Get_file_stats(df)
+            logger.info(f"Generated statistics for {len(file_stats)} files")
+            # Note: Email sending is commented out - uncomment if needed
+            # send_status_email(file_stats)
         except Exception as e:
-            print("error", e)
-        #send_status_email(file_stats)
+            log_error_with_context(logger, e, "Error generating file statistics")
+
+        log_process_end(logger, "daily_check_all", success=True,
+                       files_processed=files_string, daily_export=daily_export)
+
+    except Exception as e:
+        log_process_end(logger, "daily_check_all", success=False, error=str(e))
+        log_error_with_context(logger, e, "Daily check all process")
+        raise
 
 def daily_check_all2():
+    """Daily automated task with email notification"""
+    logger = process_loggers['daily_task']
 
-    files_string , daily_export = Get_status(ignore_date = False,daily_export=True)
-    df, file_name = Download_results(files_string, daily_export)
-    df = pd.read_csv(r'results\results.csv',low_memory=False)
-    if True:
+    log_process_start(logger, "daily_check_all2")
+
+    try:
+        log_step(logger, "Execute daily status check")
+        files_string, daily_export = Get_status(ignore_date=False, daily_export=True)
+
+        log_step(logger, "Download and process results")
+        df, file_name = Download_results(files_string, daily_export)
+
+        # Also read from cached results for comparison
+        df = pd.read_csv(r'results\results.csv', low_memory=False)
+
+        log_step(logger, "Generate file statistics and send email")
         file_stats = Get_file_stats(df)
+        logger.info(f"Generated statistics for {len(file_stats)} files")
+
         send_status_email(file_stats)
+        logger.info("Status email sent successfully")
+
+        log_process_end(logger, "daily_check_all2", success=True,
+                       files_processed=files_string, email_sent=True)
+
+    except Exception as e:
+        log_process_end(logger, "daily_check_all2", success=False, error=str(e))
+        log_error_with_context(logger, e, "Daily check all with email process")
+        raise
 def download_wda_reg_system_data():
     """
     Download WDA_Reg aggregated data and save to system_Monitor folder

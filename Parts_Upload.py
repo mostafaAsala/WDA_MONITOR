@@ -8,6 +8,13 @@ from logging import Formatter
 import chardet
 from datetime import datetime
 import oracledb
+
+# Import enhanced CSV logging system from check_status
+try:
+    from check_status import setup_csv_logger, process_loggers, log_process_start, log_process_end, log_step, log_error_with_context
+    ENHANCED_LOGGING_AVAILABLE = True
+except ImportError:
+    ENHANCED_LOGGING_AVAILABLE = False
 # Database configuration: Replace "your_database_url_here" with your actual database connection string
 DATABASE_URL = Config.DB_URI
 
@@ -46,10 +53,16 @@ except Exception as e:
 # Setup logging for each function
 logging.basicConfig(level=logging.INFO)
 
-# Loggers for individual functionalities
-upload_logger = setup_logger("upload_parts", "upload_parts.log")
-delete_logger = setup_logger("delete_file", "delete_file.log")
-file_scan_logger = setup_logger("scan_files", "scan_files.log")
+# Loggers for individual functionalities - use enhanced CSV logging if available
+if ENHANCED_LOGGING_AVAILABLE:
+    upload_logger = setup_csv_logger("file_upload", logging.INFO)
+    delete_logger = setup_csv_logger("file_delete", logging.INFO)
+    file_scan_logger = setup_csv_logger("file_scan", logging.INFO)
+else:
+    # Fallback to basic logging
+    upload_logger = setup_logger("upload_parts", "upload_parts.log")
+    delete_logger = setup_logger("delete_file", "delete_file.log")
+    file_scan_logger = setup_logger("scan_files", "scan_files.log")
 
 
 # Function to set up the database engine and session
@@ -222,23 +235,73 @@ def main_upload_parts(folder_path):
     """
     Process all files in the folder and upload new parts to the database.
     """
-    engine = get_engine_and_session(DATABASE_URL)
-    metadata = MetaData()
+    if ENHANCED_LOGGING_AVAILABLE:
+        log_process_start(upload_logger, "main_upload_parts", folder_path=folder_path)
 
+    try:
+        engine = get_engine_and_session(DATABASE_URL)
+        metadata = MetaData()
 
-    parts_table, uploaded_files_table = define_tables(metadata)
-    metadata.create_all(engine)
+        parts_table, uploaded_files_table = define_tables(metadata)
+        metadata.create_all(engine)
 
-    with engine.connect() as session:
-        files = get_files_from_folder(folder_path)
+        if ENHANCED_LOGGING_AVAILABLE:
+            log_step(upload_logger, "Scan folder for files to upload", subprocess_name="folder_scan")
 
-        for file_path in files:
-            file_name = os.path.basename(file_path)
-            if is_file_uploaded(session, uploaded_files_table, file_name):
-                upload_logger.info(f"File '{file_name}' already uploaded. Skipping.")
-                continue
-            parts = extract_parts_from_file(file_path)
-            upload_parts(session, parts_table, uploaded_files_table, file_path, parts)
+        with engine.connect() as session:
+            files = get_files_from_folder(folder_path)
+
+            if ENHANCED_LOGGING_AVAILABLE:
+                log_step(upload_logger, f"Process {len(files)} files for upload", subprocess_name="file_processing_init")
+
+            files_processed = 0
+            files_skipped = 0
+
+            for file_index, file_path in enumerate(files, 1):
+                file_name = os.path.basename(file_path)
+
+                if is_file_uploaded(session, uploaded_files_table, file_name):
+                    if ENHANCED_LOGGING_AVAILABLE:
+                        record = upload_logger.makeRecord(
+                            upload_logger.name, logging.INFO, '', 0,
+                            f"File '{file_name}' already uploaded. Skipping.",
+                            (), None, func='file_check'
+                        )
+                        record.subprocess = 'file_check'
+                        record.details = f'file_status=already_uploaded'
+                        upload_logger.handle(record)
+                    else:
+                        upload_logger.info(f"File '{file_name}' already uploaded. Skipping.")
+                    files_skipped += 1
+                    continue
+
+                if ENHANCED_LOGGING_AVAILABLE:
+                    record = upload_logger.makeRecord(
+                        upload_logger.name, logging.INFO, '', 0,
+                        f"Processing file {file_index}/{len(files)}: {file_name}",
+                        (), None, func='file_processing'
+                    )
+                    record.subprocess = 'file_processing'
+                    record.details = f'file_index={file_index},total_files={len(files)}'
+                    upload_logger.handle(record)
+                else:
+                    upload_logger.info(f"Processing file {file_index}/{len(files)}: {file_name}")
+
+                parts = extract_parts_from_file(file_path)
+                upload_parts(session, parts_table, uploaded_files_table, file_path, parts)
+                files_processed += 1
+
+        if ENHANCED_LOGGING_AVAILABLE:
+            log_process_end(upload_logger, "main_upload_parts", success=True,
+                           files_processed=files_processed, files_skipped=files_skipped)
+
+    except Exception as e:
+        if ENHANCED_LOGGING_AVAILABLE:
+            log_process_end(upload_logger, "main_upload_parts", success=False, error=str(e))
+            log_error_with_context(upload_logger, e, f"Upload parts from folder: {folder_path}", subprocess_name="error_handling")
+        else:
+            upload_logger.error(f"Error in main_upload_parts: {str(e)}")
+        raise
 
 # Main function to delete a specific file and its content
 def main_delete_file(folder_path, file_name):
